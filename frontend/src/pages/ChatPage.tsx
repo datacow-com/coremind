@@ -30,6 +30,8 @@ const ChatPage: React.FC = () => {
   const [documents, setDocuments] = useState<Document[]>([])
   const [selectedDocument, setSelectedDocument] = useState<string | null>(null)
   const [pdfPreview, setPdfPreview] = useState<string | null>(null)
+  const [previewImg, setPreviewImg] = useState<string | null>(null)
+  const [previewBBoxes, setPreviewBBoxes] = useState<Array<{x:number,y:number,w:number,h:number}>>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -85,12 +87,10 @@ const ChatPage: React.FC = () => {
       setMessages(prev => [...prev, assistantMessage])
       setConversationId(data.conversation_id)
       
-      // If there are sources, show the first one in PDF preview
+      // Auto preview first source
       if (data.sources && data.sources.length > 0) {
         const firstSource = data.sources[0]
-        // Here you would load the actual PDF and navigate to the page
-        // For now, we'll just show a placeholder
-        setPdfPreview(`Document: ${firstSource.document_name}, Page: ${firstSource.page_number}`)
+        await loadPreviewForSource(firstSource)
       }
       
     } catch (error) {
@@ -242,9 +242,13 @@ const ChatPage: React.FC = () => {
                       <p className="text-xs text-gray-500 mb-2">Sources:</p>
                       <div className="space-y-1">
                         {message.sources.map((source, index) => (
-                          <div key={source.chunk_id} className="text-xs text-gray-600">
+                          <button
+                            key={source.chunk_id}
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={() => loadPreviewForSource(source)}
+                          >
                             <span className="font-medium">[{index + 1}]</span> {source.document_name} (p. {source.page_number})
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -300,12 +304,30 @@ const ChatPage: React.FC = () => {
         <div className="p-4">
           {pdfPreview ? (
             <div className="text-sm text-gray-600">
-              <p>{pdfPreview}</p>
-              <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                <p className="text-xs text-gray-500">
-                  PDF preview would show here with highlighting of relevant sections
-                </p>
-              </div>
+              <p className="mb-2">{pdfPreview}</p>
+              {previewImg ? (
+                <div className="relative border rounded overflow-hidden">
+                  <img src={previewImg} alt="preview" className="max-w-full" />
+                  {previewBBoxes.map((b, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        position: 'absolute',
+                        left: b.x,
+                        top: b.y,
+                        width: b.w,
+                        height: b.h,
+                        border: '2px solid rgba(59,130,246,0.8)',
+                        boxShadow: '0 0 0 2px rgba(59,130,246,0.3) inset'
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+                  <p className="text-xs text-gray-500">Preview unavailable</p>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center text-gray-500">
@@ -320,3 +342,39 @@ const ChatPage: React.FC = () => {
 }
 
 export default ChatPage
+  const extractDocumentId = (documentName: string): string | null => {
+    try {
+      const base = documentName.split('/').pop() || documentName
+      const id = base.replace('.pdf','')
+      return id
+    } catch {
+      return null
+    }
+  }
+
+  const loadPreviewForSource = async (source: { document_name: string, page_number: number }) => {
+    const docId = extractDocumentId(source.document_name)
+    if (!docId || !source.page_number) {
+      setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+      setPreviewImg(null)
+      setPreviewBBoxes([])
+      return
+    }
+    try {
+      const res = await fetch(`/api/documents/${docId}/pages/${source.page_number}`)
+      if (res.ok) {
+        const data = await res.json()
+        setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+        setPreviewImg(`data:image/png;base64,${data.image_base64}`)
+        setPreviewBBoxes(data.bboxes || [])
+      } else {
+        setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+        setPreviewImg(null)
+        setPreviewBBoxes([])
+      }
+    } catch {
+      setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+      setPreviewImg(null)
+      setPreviewBBoxes([])
+    }
+  }
