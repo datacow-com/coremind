@@ -1,5 +1,22 @@
 import asyncio
-from api.routes import get_providers, set_providers, test_provider
+import os
+import importlib.util
+
+
+def _load_module(name: str, rel_path: str):
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    path = os.path.join(root, rel_path)
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+routes_mod = _load_module("server_routes_local", "server/routes.py")
+get_providers = routes_mod.get_providers
+set_providers = routes_mod.set_providers
+test_provider = routes_mod.test_provider
 
 
 def test_model_gateway_get_and_test():
@@ -20,4 +37,3 @@ def test_model_gateway_set():
     }
     res = loop.run_until_complete(set_providers(payload))
     assert res["status"] == "ok"
-

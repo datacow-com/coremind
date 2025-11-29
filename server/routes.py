@@ -1,18 +1,20 @@
 import asyncio
 import os
 from uuid import uuid4
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, UploadFile, Depends
 from fastapi.responses import FileResponse
 from typing import List
 from core.graph import create_graph
-from api.schemas import UploadResponse, ChatRequest, ChatResponse, Source
+from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document
 from core.model_gateway.config_store import load_config, save_config, validate_provider
+from server.auth import verify_token, create_token
 import base64
 import fitz
 
 router = APIRouter()
+secure_router = APIRouter(dependencies=[Depends(verify_token)])
 
 rag_app = create_graph()
 
@@ -39,7 +41,6 @@ async def get_page_preview(document_id: str, page_number: int):
     img_bytes = pix.tobytes("png")
     doc.close()
     img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-    # collect bboxes
     metas = list_page_meta(pdf_path, page_number)
     bboxes = []
     for m in metas:
@@ -96,51 +97,6 @@ async def delete_document_api(document_id: str):
     }
 
 
-@router.get("/documents/{document_id}/download")
-async def download_document(document_id: str):
-    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
-    pdf_path = os.path.join(uploads_dir, f"{document_id}.pdf")
-    if not os.path.exists(pdf_path):
-        return {"status": "error", "message": "not found"}
-    return FileResponse(pdf_path, filename=f"{document_id}.pdf", media_type="application/pdf")
-
-
-# Model Gateway APIs (config only, no secrets storage)
-
-@router.get("/models/providers")
-async def get_providers():
-    cfg = load_config()
-    validations = [validate_provider(p.get("name")) for p in cfg.get("providers", [])]
-    return {"config": cfg, "validations": validations}
-
-
-@router.post("/models/providers")
-async def set_providers(payload: dict):
-    cfg = load_config()
-    if "providers" in payload:
-        cfg["providers"] = payload["providers"]
-    if "bindings" in payload:
-        cfg["bindings"] = payload["bindings"]
-    save_config(cfg)
-    return {"status": "ok"}
-
-
-@router.post("/models/providers/test")
-async def test_provider(payload: dict):
-    name = payload.get("name")
-    if not name:
-        return {"status": "error", "message": "name required"}
-    res = validate_provider(name)
-    return {"status": "ok", "result": res}
-
-@router.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
-    result = await rag_app.ainvoke({"query": req.query})
-    sources: List[Source] = []
-    raw_sources = result.get("sources") or []
-    for s in raw_sources:
-        sources.append(Source(**{k: s.get(k) for k in ["chunk_id", "content", "score", "document_name", "page_number"]}))
-    return ChatResponse(answer=result.get("answer", ""), sources=sources, conversation_id=req.conversation_id, message_id=str(uuid4()))
 @router.get("/documents")
 async def list_documents():
     uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
@@ -169,3 +125,55 @@ async def list_documents():
             "file_size": file_size,
         })
     return {"documents": docs}
+
+
+@router.get("/documents/{document_id}/download")
+async def download_document(document_id: str):
+    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
+    pdf_path = os.path.join(uploads_dir, f"{document_id}.pdf")
+    if not os.path.exists(pdf_path):
+        return {"status": "error", "message": "not found"}
+    return FileResponse(pdf_path, filename=f"{document_id}.pdf", media_type="application/pdf")
+
+
+@secure_router.get("/models/providers")
+async def get_providers():
+    cfg = load_config()
+    validations = [validate_provider(p.get("name")) for p in cfg.get("providers", [])]
+    return {"config": cfg, "validations": validations}
+
+
+@secure_router.post("/models/providers")
+async def set_providers(payload: dict):
+    cfg = load_config()
+    if "providers" in payload:
+        cfg["providers"] = payload["providers"]
+    if "bindings" in payload:
+        cfg["bindings"] = payload["bindings"]
+    save_config(cfg)
+    return {"status": "ok"}
+
+
+@secure_router.post("/models/providers/test")
+async def test_provider(payload: dict):
+    name = payload.get("name")
+    if not name:
+        return {"status": "error", "message": "name required"}
+    res = validate_provider(name)
+    return {"status": "ok", "result": res}
+
+
+@router.post("/auth/demo")
+async def demo_login():
+    token = create_token("demo-user")
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest):
+    result = await rag_app.ainvoke({"query": req.query})
+    sources: List[Source] = []
+    raw_sources = result.get("sources") or []
+    for s in raw_sources:
+        sources.append(Source(**{k: s.get(k) for k in ["chunk_id", "content", "score", "document_name", "page_number"]}))
+    return ChatResponse(answer=result.get("answer", ""), sources=sources, conversation_id=req.conversation_id, message_id=str(uuid4()))

@@ -1,9 +1,23 @@
 import asyncio
 import os
 import tempfile
+import importlib.util
 
-from api.routes import get_document_status
-from core.nodes.ingest import ingest
+
+def _load_module(name: str, rel_path: str):
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    path = os.path.join(root, rel_path)
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+routes_mod = _load_module("server_routes_local", "server/routes.py")
+ingest_mod = _load_module("ingest_node_local", "core/nodes/ingest.py")
+get_document_status = routes_mod.get_document_status
+ingest = ingest_mod.ingest
 
 try:
     import fitz
@@ -36,4 +50,3 @@ def test_document_status_returns_counts():
         assert res["document_id"] == doc_id
         assert res["processing_status"] in {"completed", "failed"}
         assert isinstance(res["chunks_count"], int)
-

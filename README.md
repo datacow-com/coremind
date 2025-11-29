@@ -71,11 +71,10 @@ The application will be available at:
 
 ### 4. Local Development
 
-**Backend Setup:**
+**Server Setup:**
 ```bash
-cd backend
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn server.main:app --reload --port 8000
 ```
 
 **Frontend Setup:**
@@ -122,17 +121,15 @@ Configure system settings:
 
 ## 🔧 Configuration
 
-### Backend Configuration
+### Server/Backend Configuration
 
-The backend uses Pydantic settings with environment variables:
+服务层通过环境变量进行配置（`requirements.txt` 中的依赖已包括 FastAPI/LangServe）：
 
-```python
-# backend/src/config.py
-class Settings(BaseSettings):
-    gemini_api_key: str = Field(..., env="GEMINI_API_KEY")
-    database_url: str = Field(..., env="DATABASE_URL")
-    milvus_host: str = Field("localhost", env="MILVUS_HOST")
-    milvus_port: int = Field(19530, env="MILVUS_PORT")
+```bash
+export GEMINI_API_KEY=...
+export OPENAI_API_KEY=...
+export MILVUS_URI=http://localhost:19530
+export SECRET_KEY=dev-secret
 ```
 
 ### Frontend Configuration
@@ -162,14 +159,27 @@ The RAG pipeline is orchestrated through LangGraph with the following nodes:
 The core innovation processes PDFs visually:
 
 ```python
-# backend/src/visual_parser.py
+# core/loaders/visual_pdf_loader.py
 class VisualPDFLoader:
-    async def _process_pdf_visually(self, pdf_path: str) -> List[DocumentChunk]:
-        # Convert PDF to images
-        # Analyze layout with Gemini Vision
-        # Extract structured content
-        # Generate embeddings
+    async def process_pdf(self, pdf_path: str) -> List[ProcessedChunk]:
+        # Convert PDF to images (PyMuPDF)
+        # Detect table regions (OpenCV)
+        # Vision transcription (Gemini) or OCR/text fallback
+        # Chunking and metadata with bbox/page
 ```
+
+## 目录结构
+
+```
+core/      # 业务内核（LangGraph、解析、检索、LLM 网关）
+server/    # 服务层（FastAPI + LangServe、REST、JWT）
+frontend/  # 前端（Chat/Settings/Documents/VectorStore）
+docs/      # 文档（PRD/架构/产品与项目计划）
+tests/     # 端到端与单元测试
+data/      # 运行数据（uploads、config）
+```
+
+> 注：`backend/` 为早期脚手架目录，已从脚本移除；可用能力将按计划迁移至 `core`/`server`。
 
 ### Database Schema
 

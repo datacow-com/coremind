@@ -1,9 +1,23 @@
 import asyncio
 import os
 import tempfile
+import importlib.util
 
-from api.routes import delete_document_api
-from core.nodes.ingest import ingest
+
+def _load_module(name: str, rel_path: str):
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    path = os.path.join(root, rel_path)
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+routes_mod = _load_module("server_routes_local", "server/routes.py")
+ingest_mod = _load_module("ingest_node_local", "core/nodes/ingest.py")
+delete_document_api = routes_mod.delete_document_api
+ingest = ingest_mod.ingest
 
 try:
     import fitz
@@ -40,4 +54,3 @@ def test_delete_document_removes_file_and_chunks():
         # File should be gone if removal succeeded
         if res["file_removed"]:
             assert not os.path.exists(pdf_path)
-
