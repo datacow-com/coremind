@@ -46,6 +46,8 @@ const SettingsPage: React.FC = () => {
   const [saveMessage, setSaveMessage] = useState('')
   const [providers, setProviders] = useState<Array<{name: string, model: string, base_url: string}>>([])
   const [validations, setValidations] = useState<Array<{provider: string, required_env: string[], missing_env: string[], configured: boolean}>>([])
+  const [groups, setGroups] = useState<{domestic: any[], foreign: any[], local: any[], other: any[]}>({domestic: [], foreign: [], local: [], other: []})
+  const [activeTab, setActiveTab] = useState<'domestic'|'foreign'|'local'|'other'>('foreign')
   const [bindings, setBindings] = useState<{parse: string, retrieve: string, chat: string, rerank: string}>({
     parse: 'gemini',
     retrieve: 'embedding',
@@ -62,6 +64,11 @@ const SettingsPage: React.FC = () => {
           setProviders(data.config?.providers || [])
           setValidations(data.validations || [])
           if (data.config?.bindings) setBindings(data.config.bindings)
+        }
+        const rg = await fetch('/api/models/providers/groups', { headers: { Authorization: `Bearer ${(await fetch('/api/auth/demo', { method: 'POST' }).then(r => r.json())).access_token}` } })
+        if (rg.ok) {
+          const gd = await rg.json()
+          setGroups(gd.groups || {domestic: [], foreign: [], local: [], other: []})
         }
       } catch (e) {
         // noop
@@ -313,6 +320,11 @@ const SettingsPage: React.FC = () => {
             <h3 className="text-md font-medium text-gray-900">Model Providers</h3>
           </div>
           <div className="bg-white border rounded-lg p-6">
+            <div className="mb-3 space-x-2">
+              {(['foreign','domestic','local','other'] as const).map(tab => (
+                <button key={tab} onClick={() => setActiveTab(tab)} className={`px-3 py-1 text-xs rounded ${activeTab===tab?'bg-blue-600 text-white':'bg-gray-200 text-gray-800'}`}>{tab}</button>
+              ))}
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -326,7 +338,7 @@ const SettingsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {providers.map((p) => {
+                  {(groups[activeTab] || providers).map((p: any) => {
                     const v = validations.find(x => x.provider === p.name)
                     return (
                       <tr key={p.name} className="border-t">

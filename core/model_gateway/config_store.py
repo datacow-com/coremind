@@ -69,3 +69,14 @@ def validate_provider(name: str) -> Dict[str, Any]:
         "missing_env": missing,
         "configured": len(missing) == 0,
     }
+
+
+def provider_category(name: str) -> str:
+    n = name.lower()
+    if n in {"dashscope", "moonshot", "qianfan", "zhipu", "deepseek"}:
+        return "domestic"
+    if n in {"openai", "anthropic", "gemini", "openrouter"}:
+        return "foreign"
+    if n in {"ollama"}:
+        return "local"
+    return "other"

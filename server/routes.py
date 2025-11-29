@@ -7,7 +7,7 @@ from core.graph import create_graph
 from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document
-from core.model_gateway.config_store import load_config, save_config, validate_provider
+from core.model_gateway.config_store import load_config, save_config, validate_provider, provider_category
 from server.auth import verify_token, create_token
 import base64
 import fitz
@@ -160,6 +160,19 @@ async def test_provider(payload: dict):
         return {"status": "error", "message": "name required"}
     res = validate_provider(name)
     return {"status": "ok", "result": res}
+
+
+@secure_router.get("/models/providers/groups")
+async def get_providers_groups():
+    cfg = load_config()
+    groups = {"domestic": [], "foreign": [], "local": [], "other": []}
+    vals = {}
+    for p in cfg.get("providers", []):
+        name = p.get("name")
+        cat = provider_category(name)
+        groups[cat].append(p)
+        vals[name] = validate_provider(name)
+    return {"groups": groups, "validations": vals}
 
 
 @router.post("/auth/demo")
