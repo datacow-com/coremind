@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type Health = {
   app_up: boolean
@@ -120,4 +120,3 @@ export default function SystemStatusPage() {
     </div>
   )
 }
-
