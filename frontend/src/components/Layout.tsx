@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { MessageSquare, FileText, Settings, Database, Search } from 'lucide-react'
+import { MessageSquare, FileText, Settings, Database, Search, Activity } from 'lucide-react'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -14,6 +14,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Documents', href: '/documents', icon: FileText },
     { name: 'Vector Store', href: '/vector-store', icon: Database },
     { name: 'Settings', href: '/settings', icon: Settings },
+    { name: 'Status', href: '/status', icon: Activity },
   ]
 
   return (
