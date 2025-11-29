@@ -6,7 +6,7 @@ from typing import List
 from core.graph import create_graph
 from api.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
-from core.storage.index_router import list_page_meta
+from core.storage.index_router import list_page_meta, doc_stats
 import base64
 import fitz
 
@@ -46,6 +46,32 @@ async def get_page_preview(document_id: str, page_number: int):
             x, y, w, h = md.get("bbox")
             bboxes.append({"x": x, "y": y, "w": w, "h": h})
     return {"image_base64": img_b64, "bboxes": bboxes}
+
+
+@router.get("/documents/{document_id}/status")
+async def get_document_status(document_id: str):
+    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
+    pdf_path = os.path.join(uploads_dir, f"{document_id}.pdf")
+    processing_status = "completed"
+    processed_pages = 0
+    total_pages = 0
+    try:
+        import fitz
+        doc = fitz.open(pdf_path)
+        total_pages = doc.page_count
+        doc.close()
+    except Exception:
+        processing_status = "failed"
+    stats = doc_stats(pdf_path)
+    processed_pages = stats.get("processed_pages", 0)
+    return {
+        "document_id": document_id,
+        "filename": os.path.basename(pdf_path),
+        "processing_status": processing_status,
+        "processed_pages": processed_pages,
+        "total_pages": total_pages,
+        "chunks_count": stats.get("chunk_count", 0),
+    }
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):

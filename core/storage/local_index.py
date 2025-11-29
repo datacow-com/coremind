@@ -31,6 +31,17 @@ class LocalIndex:
                 res.append(m)
         return res
 
+    def doc_stats(self, doc_id: str) -> Dict[str, Any]:
+        cnt = 0
+        pages = set()
+        for m in self._meta:
+            if m.get("doc_id") == doc_id:
+                cnt += 1
+                pn = int(m.get("page_num") or 0)
+                if pn > 0:
+                    pages.add(pn)
+        return {"chunk_count": cnt, "processed_pages": len(pages)}
+
 
 _INDEX = LocalIndex()
 

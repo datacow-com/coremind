@@ -43,3 +43,7 @@ def list_page_meta(doc_id: str, page_num: int):
     idx = get_local()
     return idx.list_page_meta(doc_id, page_num)
 
+
+def doc_stats(doc_id: str):
+    idx = get_local()
+    return idx.doc_stats(doc_id)
