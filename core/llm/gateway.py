@@ -12,10 +12,10 @@ class LLMGateway:
         if p == "openai" and os.environ.get("OPENAI_API_KEY"):
             try:
                 from openai import OpenAI
-                client = OpenAI()
+                oa = OpenAI()
                 mdl = self.model or os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                resp = client.chat.completions.create(
+                resp = oa.chat.completions.create(
                     model=mdl,
                     messages=[{"role": "user", "content": content}],
                     temperature=float(os.environ.get("CHAT_TEMPERATURE", "0.2")),
@@ -47,8 +47,8 @@ class LLMGateway:
                     "model": mdl,
                     "messages": [{"role": "user", "content": content}],
                 }
-                with httpx.Client(timeout=20.0) as client:
-                    r = client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                with httpx.Client(timeout=20.0) as http:
+                    r = http.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
                     if r.status_code == 200:
                         data = r.json()
                         return (data["choices"][0]["message"]["content"] or "").strip()

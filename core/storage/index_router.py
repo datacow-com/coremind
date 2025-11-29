@@ -3,10 +3,10 @@ from core.storage.local_index import get_index as get_local
 from core.storage.milvus_store import MilvusStore
 
 
-_MILVUS = None
+_MILVUS: MilvusStore | None = None
 
 
-def get_backends() -> Tuple[object, bool]:
+def get_backends() -> Tuple[MilvusStore, bool]:
     global _MILVUS
     if _MILVUS is None:
         _MILVUS = MilvusStore(dim=256, collection_name="omnirag_chunks")
