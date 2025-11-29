@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Send, Upload, FileText, Download } from 'lucide-react'
+import { Send, Upload, FileText } from 'lucide-react'
 
 interface Message {
   id: string
@@ -34,6 +34,43 @@ const ChatPage: React.FC = () => {
   const [previewBBoxes, setPreviewBBoxes] = useState<Array<{x:number,y:number,w:number,h:number}>>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const extractDocumentId = (documentName: string): string | null => {
+    try {
+      const base = documentName.split('/').pop() || documentName
+      const id = base.replace('.pdf','')
+      return id
+    } catch {
+      return null
+    }
+  }
+
+  const loadPreviewForSource = async (source: { document_name: string, page_number: number }) => {
+    const docId = extractDocumentId(source.document_name)
+    if (!docId || !source.page_number) {
+      setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+      setPreviewImg(null)
+      setPreviewBBoxes([])
+      return
+    }
+    try {
+      const res = await fetch(`/api/documents/${docId}/pages/${source.page_number}`)
+      if (res.ok) {
+        const data = await res.json()
+        setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+        setPreviewImg(`data:image/png;base64,${data.image_base64}`)
+        setPreviewBBoxes(data.bboxes || [])
+      } else {
+        setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+        setPreviewImg(null)
+        setPreviewBBoxes([])
+      }
+    } catch {
+      setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
+      setPreviewImg(null)
+      setPreviewBBoxes([])
+    }
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -342,39 +379,3 @@ const ChatPage: React.FC = () => {
 }
 
 export default ChatPage
-  const extractDocumentId = (documentName: string): string | null => {
-    try {
-      const base = documentName.split('/').pop() || documentName
-      const id = base.replace('.pdf','')
-      return id
-    } catch {
-      return null
-    }
-  }
-
-  const loadPreviewForSource = async (source: { document_name: string, page_number: number }) => {
-    const docId = extractDocumentId(source.document_name)
-    if (!docId || !source.page_number) {
-      setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
-      setPreviewImg(null)
-      setPreviewBBoxes([])
-      return
-    }
-    try {
-      const res = await fetch(`/api/documents/${docId}/pages/${source.page_number}`)
-      if (res.ok) {
-        const data = await res.json()
-        setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
-        setPreviewImg(`data:image/png;base64,${data.image_base64}`)
-        setPreviewBBoxes(data.bboxes || [])
-      } else {
-        setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
-        setPreviewImg(null)
-        setPreviewBBoxes([])
-      }
-    } catch {
-      setPdfPreview(`Document: ${source.document_name}, Page: ${source.page_number}`)
-      setPreviewImg(null)
-      setPreviewBBoxes([])
-    }
-  }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Settings, Save, Key, Database, Search, Globe } from 'lucide-react'
+import { Settings, Save, Key, Database, Globe } from 'lucide-react'
 
 interface SettingsState {
   llm: {

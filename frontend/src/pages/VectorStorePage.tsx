@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Database, Search, Info, Trash2 } from 'lucide-react'
+import { Database, Search, Info, FileText } from 'lucide-react'
 
 interface CollectionStats {
   name: string
@@ -139,7 +139,7 @@ const VectorStorePage: React.FC = () => {
             {searchResults.length > 0 && (
               <div className="space-y-3">
                 <h4 className="text-sm font-medium text-gray-700">Search Results ({searchResults.length})</h4>
-                {searchResults.map((result, index) => (
+                {searchResults.map((result) => (
                   <div key={result.chunk_id} className="border rounded-md p-3">
                     <div className="flex items-start justify-between mb-2">
                       <div className="text-sm font-medium text-gray-900">
