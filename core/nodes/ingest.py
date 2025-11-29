@@ -2,7 +2,7 @@ from typing import Dict, List
 from core.state import RAGState, ProcessedChunk
 from core.loaders.visual_pdf_loader import VisualPDFLoader, ParsingRule
 from core.embedding.simple_embedder import embed
-from core.storage.local_index import get_index
+from core.storage.index_router import add as add_index
 
 async def ingest(state: RAGState) -> Dict:
     docs = state.get("documents") or []
@@ -15,10 +15,9 @@ async def ingest(state: RAGState) -> Dict:
                 loaded = await loader.process_pdf(path)
                 chunks.extend(loaded)
         # index embeddings
-        idx = get_index()
         for ch in chunks:
             vec = embed(ch.get("content", ""))
-            idx.add(vec, {
+            add_index(vec, {
                 "id": ch.get("id"),
                 "content": ch.get("content"),
                 "page_num": ch.get("page_num"),

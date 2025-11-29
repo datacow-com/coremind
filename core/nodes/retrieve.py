@@ -1,7 +1,7 @@
 from typing import Dict, List
 from core.state import RAGState, RetrievedChunk
 from core.embedding.simple_embedder import embed
-from core.storage.local_index import get_index
+from core.storage.index_router import search as search_index
 
 
 async def retrieve(state: RAGState) -> Dict:
@@ -10,8 +10,7 @@ async def retrieve(state: RAGState) -> Dict:
         return {"retrieved_chunks": [], "step": "retrieval"}
 
     qvec = embed(query)
-    idx = get_index()
-    results = idx.search(qvec, top_k=5)
+    results = search_index(qvec, top_k=5)
 
     retrieved: List[RetrievedChunk] = []
     for meta, score in results:

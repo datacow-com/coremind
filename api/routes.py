@@ -6,7 +6,7 @@ from typing import List
 from core.graph import create_graph
 from api.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
-from core.storage.local_index import get_index
+from core.storage.index_router import list_page_meta
 import base64
 import fitz
 
@@ -38,8 +38,7 @@ async def get_page_preview(document_id: str, page_number: int):
     doc.close()
     img_b64 = base64.b64encode(img_bytes).decode("utf-8")
     # collect bboxes
-    idx = get_index()
-    metas = idx.list_page_meta(pdf_path, page_number)
+    metas = list_page_meta(pdf_path, page_number)
     bboxes = []
     for m in metas:
         md = m.get("metadata", {})
