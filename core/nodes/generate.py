@@ -1,5 +1,6 @@
 from typing import Dict, List
 from core.state import RAGState, RetrievedChunk, Source
+from core.llm.gateway import LLMGateway
 
 async def generate(state: RAGState) -> Dict:
     query = state.get("query", "")
@@ -17,5 +18,7 @@ async def generate(state: RAGState) -> Dict:
         }
         sources.append(src)
 
-    answer = f"You asked: {query}\n\nContext length: {len(context)}"
+    gw = LLMGateway()
+    llm_answer = await gw.chat(prompt=query, context=context)
+    answer = llm_answer or f"You asked: {query}\n\nContext length: {len(context)}"
     return {"context": context, "answer": answer, "sources": sources, "step": "generation"}
