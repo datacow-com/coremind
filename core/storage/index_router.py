@@ -47,3 +47,16 @@ def list_page_meta(doc_id: str, page_num: int):
 def doc_stats(doc_id: str):
     idx = get_local()
     return idx.doc_stats(doc_id)
+
+
+def delete_document(doc_id: str) -> int:
+    milvus, ok = get_backends()
+    removed = 0
+    if ok:
+        try:
+            removed += milvus.delete_document(doc_id)
+        except Exception:
+            pass
+    idx = get_local()
+    removed += idx.delete_document(doc_id)
+    return removed

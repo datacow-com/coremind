@@ -6,7 +6,7 @@ from typing import List
 from core.graph import create_graph
 from api.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
-from core.storage.index_router import list_page_meta, doc_stats
+from core.storage.index_router import list_page_meta, doc_stats, delete_document
 import base64
 import fitz
 
@@ -71,6 +71,26 @@ async def get_document_status(document_id: str):
         "processed_pages": processed_pages,
         "total_pages": total_pages,
         "chunks_count": stats.get("chunk_count", 0),
+    }
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document_api(document_id: str):
+    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
+    pdf_path = os.path.join(uploads_dir, f"{document_id}.pdf")
+    removed = delete_document(pdf_path)
+    file_removed = False
+    try:
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+            file_removed = True
+    except Exception:
+        file_removed = False
+    return {
+        "document_id": document_id,
+        "removed_chunks": removed,
+        "file_removed": file_removed,
+        "status": "ok"
     }
 
 @router.post("/chat", response_model=ChatResponse)

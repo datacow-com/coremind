@@ -42,6 +42,22 @@ class LocalIndex:
                     pages.add(pn)
         return {"chunk_count": cnt, "processed_pages": len(pages)}
 
+    def delete_document(self, doc_id: str) -> int:
+        if not self._meta:
+            return 0
+        new_vecs = []
+        new_meta = []
+        removed = 0
+        for v, m in zip(self._vectors, self._meta):
+            if m.get("doc_id") == doc_id:
+                removed += 1
+                continue
+            new_vecs.append(v)
+            new_meta.append(m)
+        self._vectors = new_vecs
+        self._meta = new_meta
+        return removed
+
 
 _INDEX = LocalIndex()
 

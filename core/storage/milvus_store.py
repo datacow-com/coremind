@@ -82,3 +82,14 @@ class MilvusStore:
                 }, float(hit.score)))
         return out
 
+    def delete_document(self, doc_id: str) -> int:
+        if not self.available:
+            return 0
+        expr = f"document_id == '{doc_id}'"
+        res = self.collection.delete(expr)
+        try:
+            # Some versions return MutationResult, we cannot get count reliably
+            self.collection.flush()
+        except Exception:
+            pass
+        return 1
