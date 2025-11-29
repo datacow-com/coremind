@@ -1,5 +1,6 @@
 from typing import Dict, Any, List, Tuple
 import numpy as np
+import os
 
 
 class MilvusStore:
@@ -7,13 +8,12 @@ class MilvusStore:
         self.dim = dim
         self.collection_name = collection_name
         self.available = False
-        self.collection = None
+        self.collection: Any | None = None
 
     def try_init(self) -> bool:
         try:
             from pymilvus import Collection, CollectionSchema, FieldSchema, DataType, connections, utility
-            import os
-            uri = os.environ.get("MILVUS_URI") or "http://localhost:19530"
+            uri = self._resolve_milvus_uri()
             connections.connect(alias="default", uri=uri)
 
             fields = [
@@ -33,18 +33,33 @@ class MilvusStore:
             else:
                 self.collection = Collection(name=self.collection_name, schema=schema)
                 index_params = {"metric_type": "COSINE", "index_type": "IVF_FLAT", "params": {"nlist": 128}}
-                self.collection.create_index("embedding", index_params)
+                if self.collection is not None:
+                    self.collection.create_index("embedding", index_params)
 
-            self.collection.load()
+            if self.collection is not None:
+                self.collection.load()
             self.available = True
             return True
         except Exception:
             self.available = False
             return False
 
+    @staticmethod
+    def _resolve_milvus_uri() -> str:
+        uri = os.environ.get("MILVUS_URI")
+        if uri:
+            return uri
+        host = os.environ.get("MILVUS_HOST")
+        port = os.environ.get("MILVUS_PORT")
+        if host and port:
+            return f"http://{host}:{port}"
+        return "http://localhost:19530"
+
     def add(self, vec: np.ndarray, meta: Dict[str, Any]) -> None:
         if not self.available:
             raise RuntimeError("MilvusStore not available")
+        if self.collection is None:
+            raise RuntimeError("MilvusStore not initialized")
         data = {
             "id": [f"{meta.get('id')}-milvus"],
             "chunk_id": [meta.get("id")],
@@ -59,6 +74,8 @@ class MilvusStore:
 
     def search(self, query_vec: np.ndarray, top_k: int = 5) -> List[Tuple[Dict[str, Any], float]]:
         if not self.available:
+            return []
+        if self.collection is None:
             return []
         search_params = {"metric_type": "COSINE", "params": {"nprobe": 16}}
         results = self.collection.search(
@@ -83,6 +100,8 @@ class MilvusStore:
 
     def delete_document(self, doc_id: str) -> int:
         if not self.available:
+            return 0
+        if self.collection is None:
             return 0
         expr = f"document_id == '{doc_id}'"
         _ = self.collection.delete(expr)

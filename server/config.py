@@ -1,20 +1,28 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
 
 
 class Settings(BaseSettings):
-    database_url: str | None = Field(None, env="DATABASE_URL")
-    milvus_uri: str | None = Field(None, env="MILVUS_URI")
-    secret_key: str = Field("dev-secret", env="SECRET_KEY")
+    database_url: str | None = None
+    milvus_uri: str | None = None
+    milvus_host: str | None = None
+    milvus_port: int | None = None
+    secret_key: str = "dev-secret"
 
-    gemini_api_key: str | None = Field(None, env="GEMINI_API_KEY")
-    openai_api_key: str | None = Field(None, env="OPENAI_API_KEY")
-    openrouter_api_key: str | None = Field(None, env="OPENROUTER_API_KEY")
+    gemini_api_key: str | None = None
+    openai_api_key: str | None = None
+    openrouter_api_key: str | None = None
 
-    chat_temperature: float = Field(0.2, env="CHAT_TEMPERATURE")
-    vector_weight: float = Field(0.6, env="VECTOR_WEIGHT")
-    keyword_weight: float = Field(0.4, env="KEYWORD_WEIGHT")
+    chat_temperature: float = 0.2
+    vector_weight: float = 0.6
+    keyword_weight: float = 0.4
+
+    @property
+    def milvus_uri_resolved(self) -> str | None:
+        if self.milvus_uri:
+            return self.milvus_uri
+        if self.milvus_host and self.milvus_port:
+            return f"http://{self.milvus_host}:{self.milvus_port}"
+        return None
 
 
 settings = Settings()  # load from env
-

@@ -10,9 +10,10 @@ def get_health() -> Dict[str, bool]:
     }
     # Milvus check
     try:
-        if settings.milvus_uri:
+        uri = settings.milvus_uri_resolved
+        if uri:
             from pymilvus import connections, utility
-            connections.connect(alias="health", uri=settings.milvus_uri)
+            connections.connect(alias="health", uri=uri)
             _ = utility.get_server_version()
             status["milvus_connected"] = True
     except Exception:
@@ -27,4 +28,3 @@ def get_health() -> Dict[str, bool]:
     except Exception:
         status["postgres_connected"] = False
     return status
-
