@@ -6,11 +6,12 @@ from typing import List
 from core.graph import create_graph
 from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
-from core.storage.index_router import list_page_meta, doc_stats, delete_document
+from core.storage.index_router import list_page_meta, doc_stats, delete_document, search as index_search, get_backends
+from core.storage.local_index import get_index
+from core.embedding.provider_embedder import Embedder
 from core.model_gateway.config_store import load_config, save_config, validate_provider, provider_category
 from server.auth import verify_token, create_token
 import base64
-import fitz
 
 router = APIRouter()
 secure_router = APIRouter(dependencies=[Depends(verify_token)])
@@ -34,6 +35,7 @@ async def upload_document(file: UploadFile):
 async def get_page_preview(document_id: str, page_number: int):
     uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
     pdf_path = os.path.join(uploads_dir, f"{document_id}.pdf")
+    import fitz
     doc = fitz.open(pdf_path)
     page = doc.load_page(page_number - 1)
     pix = page.get_pixmap(alpha=False, matrix=fitz.Matrix(2, 2))
@@ -184,9 +186,68 @@ async def demo_login():
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     thread_id: str = req.conversation_id or str(uuid4())
-    result = await rag_app.ainvoke({"query": req.query}, config={"configurable": {"thread_id": thread_id}})
+    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
+    doc_paths = None
+    if req.document_ids:
+        doc_paths = [os.path.join(uploads_dir, f"{did}.pdf") for did in req.document_ids]
+    state = {
+        "query": req.query,
+        "metadata": {
+            "top_k": int(req.top_k or 5),
+            "doc_paths": doc_paths,
+        }
+    }
+    result = await rag_app.ainvoke(state, config={"configurable": {"thread_id": thread_id}})
     sources: List[Source] = []
     raw_sources = result.get("sources") or []
     for s in raw_sources:
         sources.append(Source(**{k: s.get(k) for k in ["chunk_id", "content", "score", "document_name", "page_number"]}))
     return ChatResponse(answer=result.get("answer", ""), sources=sources, conversation_id=thread_id, message_id=str(uuid4()))
+
+
+@router.get("/vector-store/collections")
+async def vector_collections():
+    milvus, ok = get_backends()
+    collections = []
+    if ok and getattr(milvus, "collection", None) is not None:
+        name = milvus.collection_name
+        try:
+            chunk_count = int(getattr(milvus.collection, "num_entities", 0))
+        except Exception:
+            chunk_count = 0
+        collections.append({
+            "name": name,
+            "document_count": 0,
+            "chunk_count": chunk_count,
+            "embedding_dimension": milvus.dim,
+            "distance_metric": "COSINE",
+        })
+    else:
+        stats = get_index().stats_all()
+        collections.append({
+            "name": "local_index",
+            "document_count": stats.get("document_count", 0),
+            "chunk_count": stats.get("chunk_count", 0),
+            "embedding_dimension": stats.get("embedding_dimension", 256),
+            "distance_metric": "cosine",
+        })
+    return {"collections": collections}
+
+
+@router.post("/vector-store/search")
+async def vector_search(payload: dict):
+    query = payload.get("query") or ""
+    top_k = int(payload.get("top_k") or 10)
+    emb = Embedder(dim=256)
+    qvec = emb.embed(query)
+    results = index_search(qvec, top_k=top_k) or []
+    out = []
+    for meta, score in results:
+        out.append({
+            "chunk_id": meta.get("id"),
+            "content": meta.get("content"),
+            "score": float(score),
+            "document_name": meta.get("doc_id"),
+            "page_number": int(meta.get("page_num") or 0),
+        })
+    return {"results": out}

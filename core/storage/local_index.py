@@ -42,6 +42,14 @@ class LocalIndex:
                     pages.add(pn)
         return {"chunk_count": cnt, "processed_pages": len(pages)}
 
+    def stats_all(self) -> Dict[str, Any]:
+        docs = set()
+        for m in self._meta:
+            did = m.get("doc_id")
+            if did:
+                docs.add(did)
+        return {"document_count": len(docs), "chunk_count": len(self._meta), "embedding_dimension": self.dim}
+
     def delete_document(self, doc_id: str) -> int:
         if not self._meta:
             return 0
