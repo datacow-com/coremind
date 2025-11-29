@@ -35,4 +35,4 @@ logs/
 # Data/Volumes
 postgres_data/
 milvus_data/
-
+data/
