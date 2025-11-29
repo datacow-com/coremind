@@ -7,6 +7,7 @@ from core.graph import create_graph
 from api.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document
+from core.model_gateway.config_store import load_config, save_config, validate_provider
 import base64
 import fitz
 
@@ -92,6 +93,35 @@ async def delete_document_api(document_id: str):
         "file_removed": file_removed,
         "status": "ok"
     }
+
+
+# Model Gateway APIs (config only, no secrets storage)
+
+@router.get("/models/providers")
+async def get_providers():
+    cfg = load_config()
+    validations = [validate_provider(p.get("name")) for p in cfg.get("providers", [])]
+    return {"config": cfg, "validations": validations}
+
+
+@router.post("/models/providers")
+async def set_providers(payload: dict):
+    cfg = load_config()
+    if "providers" in payload:
+        cfg["providers"] = payload["providers"]
+    if "bindings" in payload:
+        cfg["bindings"] = payload["bindings"]
+    save_config(cfg)
+    return {"status": "ok"}
+
+
+@router.post("/models/providers/test")
+async def test_provider(payload: dict):
+    name = payload.get("name")
+    if not name:
+        return {"status": "error", "message": "name required"}
+    res = validate_provider(name)
+    return {"status": "ok", "result": res}
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
