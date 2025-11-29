@@ -1,0 +1,92 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: omnirag
+      POSTGRES_USER: omnirag
+      POSTGRES_PASSWORD: omnirag_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - omnirag_network
+
+  # Milvus Vector Database
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: "/var/lib/milvus/etcd"
+      ETCD_CONFIG_PATH: "/milvus/configs/embedEtcd.yaml"
+      COMMON_STORAGETYPE: "local"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    networks:
+      - omnirag_network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://omnirag:omnirag_password@postgres:5432/omnirag
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SERPER_API_KEY=${SERPER_API_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - milvus
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - omnirag_network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - omnirag_network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - omnirag_network
+
+volumes:
+  postgres_data:
+  milvus_data:
+
+networks:
+  omnirag_network:
+    driver: bridge

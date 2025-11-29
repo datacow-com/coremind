@@ -1,0 +1,22 @@
+{
+  "name": "omnirag",
+  "version": "1.0.0",
+  "description": "Enterprise-grade RAG system with visual parsing and LangGraph orchestration",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && uvicorn main:app --host 0.0.0.0 --port 8000",
+    "lint": "cd frontend && npm run lint && cd ../backend && ruff check .",
+    "typecheck": "cd frontend && npm run type-check && cd ../backend && mypy ."
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ]
+}
