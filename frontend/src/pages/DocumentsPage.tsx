@@ -47,6 +47,15 @@ const DocumentsPage: React.FC = () => {
     }
   }
 
+  const handleDownload = async (documentId: string) => {
+    try {
+      const url = `/api/documents/${documentId}/download`
+      window.open(url, '_blank')
+    } catch (error) {
+      console.error('Error downloading file:', error)
+    }
+  }
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes'
     const k = 1024
@@ -124,7 +133,7 @@ const DocumentsPage: React.FC = () => {
                   </div>
                   
                   <div className="flex items-center space-x-2">
-                    <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                    <button onClick={() => handleDownload(document.id)} className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
                       <Download className="h-4 w-4" />
                     </button>
                     <button

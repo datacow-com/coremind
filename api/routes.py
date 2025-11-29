@@ -2,6 +2,7 @@ import asyncio
 import os
 from uuid import uuid4
 from fastapi import APIRouter, UploadFile
+from fastapi.responses import FileResponse
 from typing import List
 from core.graph import create_graph
 from api.schemas import UploadResponse, ChatRequest, ChatResponse, Source
@@ -95,6 +96,15 @@ async def delete_document_api(document_id: str):
     }
 
 
+@router.get("/documents/{document_id}/download")
+async def download_document(document_id: str):
+    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
+    pdf_path = os.path.join(uploads_dir, f"{document_id}.pdf")
+    if not os.path.exists(pdf_path):
+        return {"status": "error", "message": "not found"}
+    return FileResponse(pdf_path, filename=f"{document_id}.pdf", media_type="application/pdf")
+
+
 # Model Gateway APIs (config only, no secrets storage)
 
 @router.get("/models/providers")
@@ -131,3 +141,31 @@ async def chat(req: ChatRequest):
     for s in raw_sources:
         sources.append(Source(**{k: s.get(k) for k in ["chunk_id", "content", "score", "document_name", "page_number"]}))
     return ChatResponse(answer=result.get("answer", ""), sources=sources, conversation_id=req.conversation_id, message_id=str(uuid4()))
+@router.get("/documents")
+async def list_documents():
+    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+    docs = []
+    for fname in os.listdir(uploads_dir):
+        if not fname.endswith(".pdf"):
+            continue
+        doc_id = fname.replace(".pdf", "")
+        fpath = os.path.join(uploads_dir, fname)
+        try:
+            stat = os.stat(fpath)
+            upload_date = stat.st_mtime
+            file_size = stat.st_size
+        except Exception:
+            upload_date = 0
+            file_size = 0
+        status = await get_document_status(doc_id)
+        docs.append({
+            "id": doc_id,
+            "filename": fname,
+            "upload_date": upload_date,
+            "processing_status": status.get("processing_status"),
+            "processed_pages": status.get("processed_pages"),
+            "total_pages": status.get("total_pages"),
+            "file_size": file_size,
+        })
+    return {"documents": docs}
