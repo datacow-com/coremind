@@ -24,10 +24,16 @@ class LocalIndex:
         idx = np.argsort(-scores)[:top_k]
         return [(self._meta[i], float(scores[i])) for i in idx]
 
+    def list_page_meta(self, doc_id: str, page_num: int) -> List[Dict[str, Any]]:
+        res: List[Dict[str, Any]] = []
+        for m in self._meta:
+            if m.get("doc_id") == doc_id and int(m.get("page_num") or 0) == int(page_num):
+                res.append(m)
+        return res
+
 
 _INDEX = LocalIndex()
 
 
 def get_index() -> LocalIndex:
     return _INDEX
-
