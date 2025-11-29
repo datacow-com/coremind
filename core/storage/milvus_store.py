@@ -45,7 +45,6 @@ class MilvusStore:
     def add(self, vec: np.ndarray, meta: Dict[str, Any]) -> None:
         if not self.available:
             raise RuntimeError("MilvusStore not available")
-        from pymilvus import MutationResult
         data = {
             "id": [f"{meta.get('id')}-milvus"],
             "chunk_id": [meta.get("id")],
@@ -86,7 +85,7 @@ class MilvusStore:
         if not self.available:
             return 0
         expr = f"document_id == '{doc_id}'"
-        res = self.collection.delete(expr)
+        _ = self.collection.delete(expr)
         try:
             # Some versions return MutationResult, we cannot get count reliably
             self.collection.flush()

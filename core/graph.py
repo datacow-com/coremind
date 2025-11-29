@@ -1,4 +1,3 @@
-from typing import Callable
 import os
 from langgraph.graph import StateGraph, END
 from core.state import RAGState

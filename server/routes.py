@@ -1,4 +1,3 @@
-import asyncio
 import os
 from uuid import uuid4
 from fastapi import APIRouter, UploadFile, Depends
@@ -10,7 +9,6 @@ from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document
 from core.model_gateway.config_store import load_config, save_config, validate_provider
 from server.auth import verify_token, create_token
-from typing import Optional
 import base64
 import fitz
 

@@ -1,7 +1,6 @@
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict
 from core.state import ProcessedChunk
 import os
-import io
 
 
 class ParsingRule:

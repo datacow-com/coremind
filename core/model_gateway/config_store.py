@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 import os
 import json
 
@@ -69,4 +69,3 @@ def validate_provider(name: str) -> Dict[str, Any]:
         "missing_env": missing,
         "configured": len(missing) == 0,
     }
-

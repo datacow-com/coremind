@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 import os
 
 
@@ -56,4 +56,3 @@ class LLMGateway:
                 pass
         # fallback
         return ""
-

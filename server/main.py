@@ -3,7 +3,6 @@ from langserve import add_routes
 from core.graph import create_graph
 from server.routes import router as api_router
 from server.routes import secure_router as api_secure_router
-from server.config import settings
 from server.health import get_health
 from server.logging import init_logging
 from fastapi import Request
