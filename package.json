@@ -10,7 +10,7 @@
     "build": "cd frontend && npm run build",
     "start": "uvicorn server.main:app --host 0.0.0.0 --port 8000",
     "lint": "npm --workspace frontend run lint && ruff check core server",
-    "typecheck": "cd frontend && npm run type-check"
+    "typecheck": "npm --workspace frontend run type-check && mypy core server"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

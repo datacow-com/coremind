@@ -30,3 +30,10 @@ jobs:
         run: |
           python -m pytest -q
 
+      - name: Run Ruff (Python lint)
+        run: |
+          ruff check core server
+
+      - name: Run MyPy (type check)
+        run: |
+          mypy core server --config-file mypy.ini

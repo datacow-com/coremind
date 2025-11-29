@@ -20,3 +20,5 @@ pydantic-settings==2.6.1
 rank-bm25==0.2.2
 PyJWT==2.9.0
 langgraph-checkpoint-postgres==1.0.2
+ruff==0.6.9
+mypy==1.11.2
