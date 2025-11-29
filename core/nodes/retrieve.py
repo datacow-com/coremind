@@ -15,9 +15,18 @@ async def retrieve(state: RAGState) -> Dict:
     qvec = emb.embed(query)
     v_weight = float(os.environ.get("VECTOR_WEIGHT", "0.6"))
     k_weight = float(os.environ.get("KEYWORD_WEIGHT", "0.4"))
-    vector_results = search_index(qvec, top_k=5)
+    meta = state.get("metadata", {}) or {}
+    top_k = int(meta.get("top_k") or 5)
+    doc_paths = meta.get("doc_paths") or None
+    vector_results = search_index(qvec, top_k=top_k)
     kw = get_keyword_index()
-    keyword_results = kw.search(query, top_k=5)
+    keyword_results = kw.search(query, top_k=top_k)
+
+    if doc_paths:
+        def keep(meta):
+            return (meta.get("doc_id") in doc_paths)
+        vector_results = [(m, s) for (m, s) in vector_results if keep(m)]
+        keyword_results = [(m, s) for (m, s) in keyword_results if keep(m)]
 
     fused: Dict[str, RetrievedChunk] = {}
     def push(meta, score):
@@ -44,6 +53,6 @@ async def retrieve(state: RAGState) -> Dict:
 
     results: List[RetrievedChunk] = list(fused.values())
     
-    retrieved: List[RetrievedChunk] = sorted(results, key=lambda x: x.get("score", 0.0), reverse=True)[:5]
+    retrieved: List[RetrievedChunk] = sorted(results, key=lambda x: x.get("score", 0.0), reverse=True)[:top_k]
 
     return {"retrieved_chunks": retrieved, "step": "retrieval"}
