@@ -20,6 +20,7 @@
 ## 4. Persistence (Memory)
 - 使用 `PostgresSaver`。
 - 每一个 `thread_id` 对应一个用户的会话历史。系统自动处理历史记录的注入。
+ - 已在 `core/graph.py` 集成可选的 PostgresSaver（通过 `DATABASE_URL` 启用），`server/routes.py` 在 `/chat` 传递 `thread_id` 用于持久化线程上下文。
 
 ## 5. 目录结构与职责
 

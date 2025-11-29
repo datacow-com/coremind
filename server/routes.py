@@ -10,6 +10,7 @@ from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document
 from core.model_gateway.config_store import load_config, save_config, validate_provider
 from server.auth import verify_token, create_token
+from typing import Optional
 import base64
 import fitz
 
@@ -171,9 +172,10 @@ async def demo_login():
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
-    result = await rag_app.ainvoke({"query": req.query})
+    thread_id: str = req.conversation_id or str(uuid4())
+    result = await rag_app.ainvoke({"query": req.query}, config={"configurable": {"thread_id": thread_id}})
     sources: List[Source] = []
     raw_sources = result.get("sources") or []
     for s in raw_sources:
         sources.append(Source(**{k: s.get(k) for k in ["chunk_id", "content", "score", "document_name", "page_number"]}))
-    return ChatResponse(answer=result.get("answer", ""), sources=sources, conversation_id=req.conversation_id, message_id=str(uuid4()))
+    return ChatResponse(answer=result.get("answer", ""), sources=sources, conversation_id=thread_id, message_id=str(uuid4()))
