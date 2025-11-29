@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Settings, Save, Key, Database, Globe } from 'lucide-react'
 
 interface SettingsState {
@@ -58,14 +58,19 @@ const SettingsPage: React.FC = () => {
   useEffect(() => {
     const loadProviders = async () => {
       try {
-        const res = await fetch('/api/models/providers')
+        const token = await fetch('/api/auth/demo', { method: 'POST' })
+          .then(r => r.ok ? r.json() : Promise.reject('auth failed'))
+          .then(d => d.access_token as string)
+
+        const res = await fetch('/api/models/providers', { headers: { Authorization: `Bearer ${token}` } })
         if (res.ok) {
           const data = await res.json()
           setProviders(data.config?.providers || [])
           setValidations(data.validations || [])
           if (data.config?.bindings) setBindings(data.config.bindings)
         }
-        const rg = await fetch('/api/models/providers/groups', { headers: { Authorization: `Bearer ${(await fetch('/api/auth/demo', { method: 'POST' }).then(r => r.json())).access_token}` } })
+
+        const rg = await fetch('/api/models/providers/groups', { headers: { Authorization: `Bearer ${token}` } })
         if (rg.ok) {
           const gd = await rg.json()
           setGroups(gd.groups || {domestic: [], foreign: [], local: [], other: []})
