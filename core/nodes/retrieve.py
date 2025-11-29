@@ -1,6 +1,6 @@
 from typing import Dict, List
 from core.state import RAGState, RetrievedChunk
-from core.embedding.simple_embedder import embed
+from core.embedding.provider_embedder import Embedder
 from core.storage.index_router import search as search_index
 
 
@@ -9,7 +9,8 @@ async def retrieve(state: RAGState) -> Dict:
     if not query:
         return {"retrieved_chunks": [], "step": "retrieval"}
 
-    qvec = embed(query)
+    emb = Embedder(dim=256)
+    qvec = emb.embed(query)
     results = search_index(qvec, top_k=5)
 
     retrieved: List[RetrievedChunk] = []
