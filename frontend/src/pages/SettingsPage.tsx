@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Settings, Save, Key, Database, Search, Globe } from 'lucide-react'
 
 interface SettingsState {
@@ -44,16 +44,44 @@ const SettingsPage: React.FC = () => {
 
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [providers, setProviders] = useState<Array<{name: string, model: string, base_url: string}>>([])
+  const [validations, setValidations] = useState<Array<{provider: string, required_env: string[], missing_env: string[], configured: boolean}>>([])
+  const [bindings, setBindings] = useState<{parse: string, retrieve: string, chat: string, rerank: string}>({
+    parse: 'gemini',
+    retrieve: 'embedding',
+    chat: 'gemini',
+    rerank: 'cross_encoder',
+  })
+
+  useEffect(() => {
+    const loadProviders = async () => {
+      try {
+        const res = await fetch('/api/models/providers')
+        if (res.ok) {
+          const data = await res.json()
+          setProviders(data.config?.providers || [])
+          setValidations(data.validations || [])
+          if (data.config?.bindings) setBindings(data.config.bindings)
+        }
+      } catch (e) {
+        // noop
+      }
+    }
+    loadProviders()
+  }, [])
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      const response = await fetch('/api/settings', {
+      const response = await fetch('/api/models/providers', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(settings)
+        body: JSON.stringify({
+          bindings,
+          providers,
+        })
       })
 
       if (response.ok) {
@@ -93,6 +121,34 @@ const SettingsPage: React.FC = () => {
     }))
   }
 
+  const testProvider = async (name: string) => {
+    try {
+      const res = await fetch('/api/models/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const v = data.result
+        setValidations(prev => {
+          const next = prev.filter(p => p.provider !== name)
+          next.push(v)
+          return next
+        })
+        setSaveMessage(v.configured ? `${name} configured` : `Missing env: ${v.missing_env.join(', ')}`)
+        setTimeout(() => setSaveMessage(''), 3000)
+      }
+    } catch (e) {
+      setSaveMessage('Test failed')
+      setTimeout(() => setSaveMessage(''), 3000)
+    }
+  }
+
+  const updateBinding = (key: keyof typeof bindings, value: string) => {
+    setBindings(prev => ({ ...prev, [key]: value }))
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
@@ -124,8 +180,56 @@ const SettingsPage: React.FC = () => {
             <Key className="h-5 w-5 text-blue-600" />
             <h3 className="text-md font-medium text-gray-900">LLM Configuration</h3>
           </div>
-          
+
           <div className="bg-white border rounded-lg p-6 space-y-4">
+            {/* Bindings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Parse (Vision)</label>
+                <select
+                  value={bindings.parse}
+                  onChange={(e) => updateBinding('parse', e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {providers.map(p => (
+                    <option key={`parse-${p.name}`} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Chat</label>
+                <select
+                  value={bindings.chat}
+                  onChange={(e) => updateBinding('chat', e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {providers.map(p => (
+                    <option key={`chat-${p.name}`} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Retrieve</label>
+                <select
+                  value={bindings.retrieve}
+                  onChange={(e) => updateBinding('retrieve', e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="embedding">embedding</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Rerank</label>
+                <select
+                  value={bindings.rerank}
+                  onChange={(e) => updateBinding('rerank', e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="cross_encoder">cross_encoder</option>
+                </select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -198,6 +302,50 @@ const SettingsPage: React.FC = () => {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Model Providers */}
+        <div className="mb-8">
+          <div className="flex items-center space-x-2 mb-4">
+            <Settings className="h-5 w-5 text-blue-600" />
+            <h3 className="text-md font-medium text-gray-900">Model Providers</h3>
+          </div>
+          <div className="bg-white border rounded-lg p-6">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left">
+                    <th className="px-3 py-2">Provider</th>
+                    <th className="px-3 py-2">Model</th>
+                    <th className="px-3 py-2">Base URL</th>
+                    <th className="px-3 py-2">Configured</th>
+                    <th className="px-3 py-2">Missing Env</th>
+                    <th className="px-3 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {providers.map((p) => {
+                    const v = validations.find(x => x.provider === p.name)
+                    return (
+                      <tr key={p.name} className="border-t">
+                        <td className="px-3 py-2 font-medium">{p.name}</td>
+                        <td className="px-3 py-2">{p.model}</td>
+                        <td className="px-3 py-2 text-gray-600">{p.base_url}</td>
+                        <td className="px-3 py-2">{v?.configured ? 'Yes' : 'No'}</td>
+                        <td className="px-3 py-2 text-gray-600">{(v?.missing_env || []).join(', ')}</td>
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={() => testProvider(p.name)}
+                            className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >Test</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
