@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Send, Upload, FileText } from 'lucide-react'
 
 interface Message {
@@ -79,6 +79,21 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    const loadDocs = async () => {
+      try {
+        const r = await fetch('/api/documents')
+        if (r.ok) {
+          const data = await r.json()
+          setDocuments(data.documents || [])
+        }
+      } catch (e) {
+        // noop
+      }
+    }
+    loadDocs()
+  }, [])
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return
