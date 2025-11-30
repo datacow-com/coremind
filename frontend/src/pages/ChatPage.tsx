@@ -694,6 +694,6 @@ export default ChatPage
       const res = await fetch('/api/execute/export/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tables }) })
       if (!res.ok) return
       const data = await res.json()
-      if (data.download_url) setExportLinks(prev => ({ ...prev, [message.id]: data.download_url }))
+      if (data.download_url) setExportLinks((prev: Record<string, string>) => ({ ...prev, [message.id]: data.download_url }))
     } catch {}
   }
