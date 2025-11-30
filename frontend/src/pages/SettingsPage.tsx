@@ -54,6 +54,9 @@ const SettingsPage: React.FC = () => {
     chat: 'gemini',
     rerank: 'cross_encoder',
   })
+  const [vectorWeight, setVectorWeight] = useState<number>(0.6)
+  const [keywordWeight, setKeywordWeight] = useState<number>(0.4)
+  const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true)
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -68,6 +71,12 @@ const SettingsPage: React.FC = () => {
           setProviders(data.config?.providers || [])
           setValidations(data.validations || [])
           if (data.config?.bindings) setBindings(data.config.bindings)
+          const s = data.config?.settings
+          if (s) {
+            setVectorWeight(s.vector_weight ?? 0.6)
+            setKeywordWeight(s.keyword_weight ?? 0.4)
+            setWebSearchEnabled(s.web_search_enabled ?? true)
+          }
         }
 
         const rg = await fetch('/api/models/providers/groups', { headers: { Authorization: `Bearer ${token}` } })
@@ -93,6 +102,7 @@ const SettingsPage: React.FC = () => {
         body: JSON.stringify({
           bindings,
           providers,
+          settings: { vector_weight: vectorWeight, keyword_weight: keywordWeight, web_search_enabled: webSearchEnabled },
         })
       })
 
@@ -315,6 +325,31 @@ const SettingsPage: React.FC = () => {
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Retrieval Settings */}
+        <div className="mb-8">
+          <div className="flex items-center space-x-2 mb-4">
+            <Database className="h-5 w-5 text-blue-600" />
+            <h3 className="text-md font-medium text-gray-900">Retrieval Settings</h3>
+          </div>
+          <div className="bg-white border rounded-lg p-6 space-y-4">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-700">Vector Weight</label>
+                <input type="number" min={0} max={1} step={0.1} value={vectorWeight} onChange={(e)=>setVectorWeight(Math.max(0, Math.min(1, parseFloat(e.target.value||'0.6'))))} className="w-20 border rounded px-2 py-1" />
+              </div>
+              <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-700">Keyword Weight</label>
+                <input type="number" min={0} max={1} step={0.1} value={keywordWeight} onChange={(e)=>setKeywordWeight(Math.max(0, Math.min(1, parseFloat(e.target.value||'0.4'))))} className="w-20 border rounded px-2 py-1" />
+              </div>
+              <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-700">Web Search</label>
+                <input type="checkbox" checked={webSearchEnabled} onChange={(e)=>setWebSearchEnabled(e.target.checked)} />
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">这些设置将作为默认值用于聊天检索流程，可在聊天页覆盖。</p>
           </div>
         </div>
 

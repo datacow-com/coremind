@@ -160,6 +160,13 @@ async def set_providers(payload: dict):
         cfg["providers"] = payload["providers"]
     if "bindings" in payload:
         cfg["bindings"] = payload["bindings"]
+    if "settings" in payload:
+        s = payload["settings"]
+        cfg["settings"] = {
+            "vector_weight": float(s.get("vector_weight", cfg.get("settings", {}).get("vector_weight", 0.6))),
+            "keyword_weight": float(s.get("keyword_weight", cfg.get("settings", {}).get("keyword_weight", 0.4))),
+            "web_search_enabled": bool(s.get("web_search_enabled", cfg.get("settings", {}).get("web_search_enabled", True))),
+        }
     save_config(cfg)
     return {"status": "ok"}
 

@@ -14,6 +14,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "chat": "gemini",
         "rerank": "cross_encoder",
     },
+    "settings": {
+        "vector_weight": 0.6,
+        "keyword_weight": 0.4,
+        "web_search_enabled": True,
+    },
     "providers": [
         {"name": "openai", "model": "gpt-4o-mini", "base_url": "https://api.openai.com"},
         {"name": "gemini", "model": "gemini-1.5-flash", "base_url": "https://generativelanguage.googleapis.com"},
