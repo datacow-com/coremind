@@ -438,6 +438,30 @@ async def export_csv(payload: dict):
         out_parts.append(_md_table_to_csv(t or ""))
     return {"csv": "\n\n".join(out_parts)}
 
+@router.post("/execute/export/save")
+async def export_csv_save(payload: dict):
+    tables = payload.get("tables") or []
+    out_parts = []
+    for t in tables:
+        out_parts.append(_md_table_to_csv(t or ""))
+    csv_text = "\n\n".join(out_parts)
+    base = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    out_dir = os.path.join(base, "exports")
+    os.makedirs(out_dir, exist_ok=True)
+    name = f"{uuid4()}.csv"
+    path = os.path.join(out_dir, name)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(csv_text)
+    return {"file": name, "download_url": f"/api/exports/{name}"}
+
+@router.get("/exports/{name}")
+async def download_export(name: str):
+    base = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    path = os.path.join(base, "exports", name)
+    if not os.path.exists(path):
+        return {"status": "error", "message": "not found"}
+    return FileResponse(path, filename=name, media_type="text/csv")
+
 @router.post("/ingest/image")
 async def ingest_image(file: UploadFile = File(...)):
     uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
