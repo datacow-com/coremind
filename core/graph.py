@@ -31,12 +31,11 @@ def create_graph():
     def route_router(state: RAGState) -> str:
         intent = (state.get("intent") or "qa").lower()
         if intent == "summarize":
-            return "generate"
+            return "retrieve"
         if intent == "web_search":
             return "web_search"
-        # execute 暂时路由到 web_search 或后续工具节点
         if intent == "execute":
-            return "web_search"
+            return "retrieve"
         return "retrieve"
 
     graph.add_conditional_edges("route", route_router)
@@ -44,12 +43,21 @@ def create_graph():
     graph.add_edge("rerank", "grade")
 
     def grade_router(state: RAGState) -> str:
-        return "web_search" if state.get("web_search_needed") else "generate"
+        intent = (state.get("intent") or "qa").lower()
+        if state.get("web_search_needed"):
+            return "web_search"
+        if intent == "execute":
+            return "execute"
+        if intent == "summarize":
+            return "generate"
+        return "generate"
 
     graph.add_conditional_edges("grade", grade_router)
 
     graph.add_edge("web_search", "generate")
     graph.add_edge("generate", "hallucination")
+    graph.add_node("execute", __import__("core.nodes.execute", fromlist=["execute"]).execute)
+    graph.add_edge("execute", "hallucination")
     graph.add_edge("hallucination", END)
 
     checkpointer = None
