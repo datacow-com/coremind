@@ -25,7 +25,13 @@ import time
 router = APIRouter()
 secure_router = APIRouter(dependencies=[Depends(verify_token)])
 
-rag_app = create_graph()
+_rag_app = None
+
+def get_rag_app():
+    global _rag_app
+    if _rag_app is None:
+        _rag_app = create_graph()
+    return _rag_app
 
 @router.post("/documents/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile):
@@ -213,6 +219,7 @@ async def chat(req: ChatRequest):
             "doc_paths": doc_paths,
         }
     }
+    rag_app = get_rag_app()
     result = await rag_app.ainvoke(state, config={"configurable": {"thread_id": thread_id}})
     sources: List[Source] = []
     raw_sources = result.get("sources") or []
