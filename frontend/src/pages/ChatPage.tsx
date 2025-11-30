@@ -46,6 +46,7 @@ const ChatPage: React.FC = () => {
   const [retrievalCount, setRetrievalCount] = useState<number | null>(null)
   const [rerankAvg, setRerankAvg] = useState<number | null>(null)
   const [tokenRate, setTokenRate] = useState<{cps:number,wps:number}|null>(null)
+  const [exportLinks, setExportLinks] = useState<Record<string, string>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -536,6 +537,12 @@ const ChatPage: React.FC = () => {
                           </button>
                         ))}
                       </div>
+                      <div className="mt-2 flex items-center space-x-2">
+                        <button className="text-xs px-2 py-1 border rounded hover:bg-gray-50" onClick={() => handleExportTables(message)}>Export Tables CSV</button>
+                        {exportLinks[message.id] && (
+                          <a className="text-xs text-blue-600 hover:underline" href={exportLinks[message.id]} target="_blank" rel="noreferrer">Download CSV</a>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -628,3 +635,15 @@ const ChatPage: React.FC = () => {
 }
 
 export default ChatPage
+  const handleExportTables = async (message: Message) => {
+    try {
+      const tables = (message.sources || [])
+        .map(s => s.content || '')
+        .filter(c => c.includes('|'))
+      if (tables.length === 0) return
+      const res = await fetch('/api/execute/export/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tables }) })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.download_url) setExportLinks(prev => ({ ...prev, [message.id]: data.download_url }))
+    } catch {}
+  }
