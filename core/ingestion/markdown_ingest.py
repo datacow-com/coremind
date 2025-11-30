@@ -19,6 +19,26 @@ async def read_or_pass(state: MarkdownIngestState) -> MarkdownIngestState:
                 state["md"] = f.read()
         except Exception:
             state["md"] = state.get("md") or ""
+    # write to index when md is present
+    try:
+        from core.embedding.provider_embedder import Embedder
+        from core.storage.index_router import add as index_add
+        md = state.get("md") or ""
+        paras = [p.strip() for p in md.split("\n\n") if p.strip()]
+        emb = Embedder(dim=256)
+        for i, chunk in enumerate(paras):
+            vec = emb.embed(chunk)
+            meta = {
+                "id": f"{fp}-chunk-{i}",
+                "content": chunk,
+                "page_num": 1,
+                "doc_id": fp or "md",
+                "chunk_index": i,
+                "metadata": {"type": "markdown", "bbox": None, "confidence": 0.0},
+            }
+            index_add(vec, meta)
+    except Exception:
+        pass
     return state
 
 
@@ -44,4 +64,3 @@ def create_markdown_ingest_graph():
     g.add_edge("read_or_pass", "store_md")
     memory = MemorySaver()
     return g.compile(checkpointer=memory)
-

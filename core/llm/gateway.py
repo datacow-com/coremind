@@ -39,6 +39,7 @@ class LLMGateway:
                 day = time.strftime("%Y-%m-%d", time.gmtime(rec["ts"]))
                 agg_tokens = 0
                 agg_calls = 0
+                agg_cost = 0.0
                 try:
                     with open(path, "r", encoding="utf-8") as rf:
                         for line in rf:
@@ -48,6 +49,16 @@ class LLMGateway:
                                 if d == day:
                                     agg_calls += 1
                                     agg_tokens += int(x.get("tokens_in") or 0) + int(x.get("tokens_out") or 0)
+                                    prov = (x.get("provider") or "").lower()
+                                    cpk = (
+                                        float(os.environ.get("COST_PER_1K_TOKENS_DASHSCOPE", "0")) if prov == "dashscope" else
+                                        float(os.environ.get("COST_PER_1K_TOKENS_ARK", "0")) if prov in {"ark", "volcengine"} else
+                                        float(os.environ.get("COST_PER_1K_TOKENS_OPENAI", "0")) if prov == "openai" else
+                                        float(os.environ.get("COST_PER_1K_TOKENS_GEMINI", "0")) if prov == "gemini" else
+                                        float(os.environ.get("COST_PER_1K_TOKENS_OLLAMA", "0")) if prov == "ollama" else
+                                        float(os.environ.get("USAGE_COST_PER_1K_TOKENS", "0"))
+                                    )
+                                    agg_cost += ( (int(x.get("tokens_in") or 0) + int(x.get("tokens_out") or 0)) / 1000.0 ) * cpk
                             except Exception:
                                 continue
                 except Exception:
@@ -55,6 +66,7 @@ class LLMGateway:
                 exceed = (
                     (int(th.get("max_tokens_per_day") or 0) and agg_tokens >= int(th.get("max_tokens_per_day") or 0))
                     or (int(th.get("max_calls_per_day") or 0) and agg_calls >= int(th.get("max_calls_per_day") or 0))
+                    or (float(th.get("max_cost_per_day") or 0.0) and agg_cost >= float(th.get("max_cost_per_day") or 0.0))
                 )
                 webhook = th.get("webhook_url")
                 if exceed and webhook:
@@ -62,6 +74,7 @@ class LLMGateway:
                         "day": day,
                         "calls": agg_calls,
                         "tokens": agg_tokens,
+                        "cost": round(agg_cost, 6),
                         "provider": provider,
                         "model": model,
                         "kind": kind,
