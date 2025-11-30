@@ -4,8 +4,7 @@ import os
 
 class LLMGateway:
     def __init__(self, provider: Optional[str] = None, model: Optional[str] = None):
-        vp = os.environ.get("VISION_PROVIDER")
-        self.provider = provider or vp or os.environ.get("LLM_PROVIDER", "dashscope")
+        self.provider = provider or os.environ.get("LLM_PROVIDER", "gemini")
         self.model = model
 
     async def chat(self, prompt: str, context: Optional[str] = None) -> str:
