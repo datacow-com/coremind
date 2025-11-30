@@ -32,6 +32,7 @@ const ChatPage: React.FC = () => {
   const [pdfPreview, setPdfPreview] = useState<string | null>(null)
   const [previewImg, setPreviewImg] = useState<string | null>(null)
   const [previewBBoxes, setPreviewBBoxes] = useState<Array<{x:number,y:number,w:number,h:number}>>([])
+  const [topK, setTopK] = useState<number>(5)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -95,6 +96,13 @@ const ChatPage: React.FC = () => {
     loadDocs()
   }, [])
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('omnirag_conversation_id')
+      if (saved) setConversationId(saved)
+    } catch {}
+  }, [])
+
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return
 
@@ -118,7 +126,7 @@ const ChatPage: React.FC = () => {
           query: input,
           conversation_id: conversationId,
           document_ids: selectedDocument ? [selectedDocument] : undefined,
-          top_k: 5,
+          top_k: topK,
           temperature: 0.7
         })
       })
@@ -138,6 +146,9 @@ const ChatPage: React.FC = () => {
 
       setMessages(prev => [...prev, assistantMessage])
       setConversationId(data.conversation_id)
+      try {
+        if (data.conversation_id) localStorage.setItem('omnirag_conversation_id', data.conversation_id)
+      } catch {}
       
       // Auto preview first source
       if (data.sources && data.sources.length > 0) {
@@ -245,6 +256,18 @@ const ChatPage: React.FC = () => {
                   </option>
                 ))}
               </select>
+
+              <div className="flex items-center space-x-2 text-sm">
+                <label className="text-gray-600">Top K</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={topK}
+                  onChange={(e) => setTopK(Math.max(1, Math.min(10, parseInt(e.target.value || '5'))))}
+                  className="w-16 border border-gray-300 rounded px-2 py-1"
+                />
+              </div>
               
               <input
                 ref={fileInputRef}
