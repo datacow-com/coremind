@@ -108,6 +108,9 @@ const SettingsPage: React.FC = () => {
 
       if (response.ok) {
         setSaveMessage('Settings saved successfully!')
+        try {
+          window.dispatchEvent(new CustomEvent('settings:update', { detail: { vector_weight: vectorWeight, keyword_weight: keywordWeight, web_search_enabled: webSearchEnabled } }))
+        } catch {}
         setTimeout(() => setSaveMessage(''), 3000)
       } else {
         setSaveMessage('Failed to save settings')

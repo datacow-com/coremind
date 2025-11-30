@@ -43,6 +43,9 @@ const ChatPage: React.FC = () => {
   const [requestId, setRequestId] = useState<string | null>(null)
   const [genStats, setGenStats] = useState<{chars:number,words:number}|null>(null)
   const [fallbackMsg, setFallbackMsg] = useState<string | null>(null)
+  const [retrievalCount, setRetrievalCount] = useState<number | null>(null)
+  const [rerankAvg, setRerankAvg] = useState<number | null>(null)
+  const [tokenRate, setTokenRate] = useState<{cps:number,wps:number}|null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -126,6 +129,17 @@ const ChatPage: React.FC = () => {
   }, [])
 
   useEffect(() => {
+    const onSettingsUpdate = (e: any) => {
+      const d = e.detail || {}
+      if (typeof d.vector_weight === 'number') setVectorWeight(d.vector_weight)
+      if (typeof d.keyword_weight === 'number') setKeywordWeight(d.keyword_weight)
+      if (typeof d.web_search_enabled === 'boolean') setWebSearchEnabled(d.web_search_enabled)
+    }
+    window.addEventListener('settings:update', onSettingsUpdate as any)
+    return () => window.removeEventListener('settings:update', onSettingsUpdate as any)
+  }, [])
+
+  useEffect(() => {
     try {
       const saved = localStorage.getItem('omnirag_conversation_id')
       if (saved) setConversationId(saved)
@@ -192,8 +206,17 @@ const ChatPage: React.FC = () => {
                       const chars = parseInt(evt.gen_chars || 0)
                       const words = parseInt(evt.gen_words || 0)
                       setGenStats({ chars, words })
+                      const cps = parseFloat(evt.chars_per_sec || 0)
+                      const wps = parseFloat(evt.words_per_sec || 0)
+                      setTokenRate({ cps, wps })
                     } else if (name === 'generate' && status === 'fallback') {
                       setFallbackMsg('Stream failed: fallback to non-stream response')
+                    } else if (name === 'retrieve' && status === 'end') {
+                      const cnt = parseInt(evt.count || 0)
+                      setRetrievalCount(cnt)
+                    } else if (name === 'rerank' && status === 'end') {
+                      const avg = parseFloat(evt.avg_score || 0)
+                      setRerankAvg(avg)
                     }
                   } else if (evt.type === 'answer' && evt.delta) {
                     setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: (m.content || '') + evt.delta } : m))
@@ -354,6 +377,24 @@ const ChatPage: React.FC = () => {
                   onClick={startNewChat}
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
                 >New Chat</button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const token = await fetch('/api/auth/demo', { method: 'POST' }).then(r => r.ok ? r.json() : Promise.reject('auth failed')).then(d => d.access_token as string)
+                      const res = await fetch('/api/models/providers', { headers: { Authorization: `Bearer ${token}` } })
+                      if (res.ok) {
+                        const data = await res.json()
+                        const s = data.config?.settings
+                        if (s) {
+                          setVectorWeight(s.vector_weight ?? 0.6)
+                          setKeywordWeight(s.keyword_weight ?? 0.4)
+                          setWebSearchEnabled(s.web_search_enabled ?? true)
+                        }
+                      }
+                    } catch {}
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
+                >Reset Defaults</button>
               <select
                 value={selectedDocument || ''}
                 onChange={(e) => setSelectedDocument(e.target.value || null)}
@@ -422,6 +463,15 @@ const ChatPage: React.FC = () => {
                   )}
                   {genStats && (
                     <span className="ml-2 text-gray-400">gen: {genStats.chars} chars / {genStats.words} words</span>
+                  )}
+                  {tokenRate && (
+                    <span className="ml-2 text-gray-400">rate: {tokenRate.cps.toFixed(1)} c/s / {tokenRate.wps.toFixed(1)} w/s</span>
+                  )}
+                  {retrievalCount !== null && (
+                    <span className="ml-2 text-gray-400">hits: {retrievalCount}</span>
+                  )}
+                  {rerankAvg !== null && (
+                    <span className="ml-2 text-gray-400">avg: {rerankAvg.toFixed(3)}</span>
                   )}
                   {fallbackMsg && (
                     <span className="ml-2 text-yellow-600">{fallbackMsg}</span>
