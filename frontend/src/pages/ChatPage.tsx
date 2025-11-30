@@ -42,6 +42,7 @@ const ChatPage: React.FC = () => {
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true)
   const [requestId, setRequestId] = useState<string | null>(null)
   const [genStats, setGenStats] = useState<{chars:number,words:number}|null>(null)
+  const [fallbackMsg, setFallbackMsg] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -103,6 +104,25 @@ const ChatPage: React.FC = () => {
       }
     }
     loadDocs()
+  }, [])
+
+  useEffect(() => {
+    const loadDefaults = async () => {
+      try {
+        const token = await fetch('/api/auth/demo', { method: 'POST' }).then(r => r.ok ? r.json() : Promise.reject('auth failed')).then(d => d.access_token as string)
+        const res = await fetch('/api/models/providers', { headers: { Authorization: `Bearer ${token}` } })
+        if (res.ok) {
+          const data = await res.json()
+          const s = data.config?.settings
+          if (s) {
+            setVectorWeight(s.vector_weight ?? 0.6)
+            setKeywordWeight(s.keyword_weight ?? 0.4)
+            setWebSearchEnabled(s.web_search_enabled ?? true)
+          }
+        }
+      } catch {}
+    }
+    loadDefaults()
   }, [])
 
   useEffect(() => {
@@ -172,6 +192,8 @@ const ChatPage: React.FC = () => {
                       const chars = parseInt(evt.gen_chars || 0)
                       const words = parseInt(evt.gen_words || 0)
                       setGenStats({ chars, words })
+                    } else if (name === 'generate' && status === 'fallback') {
+                      setFallbackMsg('Stream failed: fallback to non-stream response')
                     }
                   } else if (evt.type === 'answer' && evt.delta) {
                     setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: (m.content || '') + evt.delta } : m))
@@ -400,6 +422,9 @@ const ChatPage: React.FC = () => {
                   )}
                   {genStats && (
                     <span className="ml-2 text-gray-400">gen: {genStats.chars} chars / {genStats.words} words</span>
+                  )}
+                  {fallbackMsg && (
+                    <span className="ml-2 text-yellow-600">{fallbackMsg}</span>
                   )}
                 </div>
               )}
