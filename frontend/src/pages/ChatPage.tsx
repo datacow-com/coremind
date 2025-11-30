@@ -37,6 +37,9 @@ const ChatPage: React.FC = () => {
   const [phase, setPhase] = useState<string>('idle')
   const [phaseHistory, setPhaseHistory] = useState<string[]>([])
   const [streamError, setStreamError] = useState<string | null>(null)
+  const [vectorWeight, setVectorWeight] = useState<number>(0.6)
+  const [keywordWeight, setKeywordWeight] = useState<number>(0.4)
+  const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -129,7 +132,10 @@ const ChatPage: React.FC = () => {
           conversation_id: conversationId,
           document_ids: selectedDocument ? [selectedDocument] : undefined,
           top_k: topK,
-          temperature: 0.7
+          temperature: 0.7,
+          vector_weight: vectorWeight,
+          keyword_weight: keywordWeight,
+          web_search_enabled: webSearchEnabled,
         }
         const maxAttempts = 3
         let attempt = 0
@@ -191,7 +197,10 @@ const ChatPage: React.FC = () => {
             conversation_id: conversationId,
             document_ids: selectedDocument ? [selectedDocument] : undefined,
             top_k: topK,
-            temperature: 0.7
+            temperature: 0.7,
+            vector_weight: vectorWeight,
+            keyword_weight: keywordWeight,
+            web_search_enabled: webSearchEnabled,
           })
         })
         if (!response.ok) throw new Error('Failed to get response')
@@ -337,8 +346,35 @@ const ChatPage: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-2 text-sm">
+                <label className="text-gray-600">Vector</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={vectorWeight}
+                  onChange={(e) => setVectorWeight(Math.max(0, Math.min(1, parseFloat(e.target.value || '0.6'))))}
+                  className="w-16 border border-gray-300 rounded px-2 py-1"
+                />
+                <label className="text-gray-600">Keyword</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={keywordWeight}
+                  onChange={(e) => setKeywordWeight(Math.max(0, Math.min(1, parseFloat(e.target.value || '0.4'))))}
+                  className="w-16 border border-gray-300 rounded px-2 py-1"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 text-sm">
                 <label className="text-gray-600">Stream</label>
                 <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
+              </div>
+              <div className="flex items-center space-x-2 text-sm">
+                <label className="text-gray-600">WebSearch</label>
+                <input type="checkbox" checked={webSearchEnabled} onChange={(e) => setWebSearchEnabled(e.target.checked)} />
               </div>
               {streaming && (
                 <div className="text-xs text-gray-600">

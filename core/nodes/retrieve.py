@@ -13,9 +13,9 @@ async def retrieve(state: RAGState) -> Dict:
 
     emb = Embedder(dim=256)
     qvec = emb.embed(query)
-    v_weight = float(os.environ.get("VECTOR_WEIGHT", "0.6"))
-    k_weight = float(os.environ.get("KEYWORD_WEIGHT", "0.4"))
     meta = state.get("metadata", {}) or {}
+    v_weight = float(meta.get("vector_weight") or os.environ.get("VECTOR_WEIGHT", "0.6"))
+    k_weight = float(meta.get("keyword_weight") or os.environ.get("KEYWORD_WEIGHT", "0.4"))
     top_k = int(meta.get("top_k") or 5)
     doc_paths = meta.get("doc_paths") or None
     vector_results = search_index(qvec, top_k=top_k)

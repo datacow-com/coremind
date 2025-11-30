@@ -23,6 +23,9 @@ class ChatRequest(BaseModel):
     document_ids: Optional[List[str]] = None
     top_k: Optional[int] = 5
     temperature: Optional[float] = 0.7
+    vector_weight: Optional[float] = None
+    keyword_weight: Optional[float] = None
+    web_search_enabled: Optional[bool] = True
 
 
 class ChatResponse(BaseModel):

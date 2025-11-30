@@ -218,7 +218,13 @@ async def chat_stream(req: ChatRequest):
     doc_paths = None
     if req.document_ids:
         doc_paths = [os.path.join(uploads_dir, f"{did}.pdf") for did in req.document_ids]
-    meta = {"top_k": int(req.top_k or 5), "doc_paths": doc_paths}
+    meta = {
+        "top_k": int(req.top_k or 5),
+        "doc_paths": doc_paths,
+        "vector_weight": float(req.vector_weight) if req.vector_weight is not None else None,
+        "keyword_weight": float(req.keyword_weight) if req.keyword_weight is not None else None,
+        "web_search_enabled": True if req.web_search_enabled is None else bool(req.web_search_enabled),
+    }
 
     state: RAGState = {"query": req.query, "metadata": meta}
     # phase: retrieve
@@ -250,7 +256,7 @@ async def chat_stream(req: ChatRequest):
         # grade
         web_needed = False
         try:
-            gs = await grade_node({"retrieved_chunks": chunks})
+            gs = await grade_node({"retrieved_chunks": chunks, "metadata": meta})
             web_needed = bool(gs.get("web_search_needed"))
             yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "end", "web_search_needed": web_needed}) + "\n\n"
         except Exception:
