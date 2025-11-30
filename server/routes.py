@@ -1,11 +1,12 @@
 import os
 from uuid import uuid4
-from fastapi import APIRouter, UploadFile, Depends
+from fastapi import APIRouter, UploadFile, Depends, File, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi import Request
-from typing import List
+from typing import List, Dict
 import json
 from core.graph import create_graph
+from core.ingestion import create_ingest_graph
 from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document, search as index_search, get_backends, list_collections_info
@@ -18,9 +19,10 @@ from core.nodes.web_search import web_search as web_search_node
 from core.state import RAGState
 from core.llm.gateway import LLMGateway
 from core.model_gateway.config_store import load_config, save_config, validate_provider, provider_category
-from server.auth import verify_token, create_token
+from server.auth import verify_token, create_token, get_current_user
 import base64
 import time
+from datetime import datetime
 
 router = APIRouter()
 secure_router = APIRouter(dependencies=[Depends(verify_token)])
@@ -325,3 +327,74 @@ async def vector_search(payload: dict):
             "page_number": int(meta.get("page_num") or 0),
         })
     return {"results": out}
+
+@router.get("/metrics/usage")
+async def metrics_usage():
+    base = os.path.join(os.getcwd(), "data", "usage")
+    path = os.path.join(base, "usage.jsonl")
+    os.makedirs(base, exist_ok=True)
+    agg: Dict[str, Dict[str, Dict[str, int]]] = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line.strip())
+                        day = datetime.utcfromtimestamp(rec.get("ts", int(time.time()))).strftime("%Y-%m-%d")
+                        prov = rec.get("provider") or "unknown"
+                        mdl = rec.get("model") or "unknown"
+                        d = agg.setdefault(day, {}).setdefault(f"{prov}:{mdl}", {"calls": 0, "tokens_in": 0, "tokens_out": 0, "duration_ms": 0})
+                        d["calls"] += 1
+                        d["tokens_in"] += int(rec.get("tokens_in") or 0)
+                        d["tokens_out"] += int(rec.get("tokens_out") or 0)
+                        d["duration_ms"] += int(rec.get("duration_ms") or 0)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+    return {"usage": agg}
+
+@router.post("/alerts/thresholds")
+async def set_thresholds(payload: dict):
+    base = os.path.join(os.getcwd(), "data", "usage")
+    path = os.path.join(base, "thresholds.json")
+    os.makedirs(base, exist_ok=True)
+    cfg = {
+        "max_tokens_per_day": int(payload.get("max_tokens_per_day") or os.environ.get("MAX_TOKENS_PER_DAY") or 0),
+        "max_calls_per_day": int(payload.get("max_calls_per_day") or os.environ.get("MAX_CALLS_PER_DAY") or 0),
+        "max_cost_per_day": float(payload.get("max_cost_per_day") or os.environ.get("MAX_COST_PER_DAY") or 0.0),
+        "webhook_url": payload.get("webhook_url") or os.environ.get("ALERT_WEBHOOK_URL"),
+    }
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return {"ok": True, "thresholds": cfg}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+@router.post("/ingest/pdf")
+async def ingest_pdf(file: UploadFile = File(...)):
+    uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    uploads_tmp = os.path.join(uploads_dir, "tmp")
+    os.makedirs(uploads_tmp, exist_ok=True)
+    try:
+        tmp_name = f"{uuid4()}_{file.filename}"
+        tmp_path = os.path.join(uploads_tmp, tmp_name)
+        content = await file.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        app = create_ingest_graph()
+        res = await app.ainvoke({"file_path": tmp_path, "images": [], "md": None, "meta": {}})
+        return {"document_id": tmp_name, "md": res.get("md"), "md_path": (res.get("meta") or {}).get("md_path")}
+    except Exception as e:
+        base_name = file.filename if file else "document.pdf"
+        ingest_dir = os.path.join(uploads_dir, "ingest")
+        os.makedirs(ingest_dir, exist_ok=True)
+        stem = os.path.splitext(os.path.basename(base_name))[0]
+        out_md = os.path.join(ingest_dir, f"{stem}.md")
+        md = f"# {base_name}\n\nExtraction failed. Placeholder generated.\n\nError: {str(e)}\n"
+        with open(out_md, "w", encoding="utf-8") as f:
+            f.write(md)
+        return {"document_id": stem, "md": md, "md_path": out_md}
+@router.get("/me")
+async def me(user: dict = Depends(get_current_user)):
+    return user

@@ -7,7 +7,32 @@ class LLMGateway:
         self.provider = provider or os.environ.get("LLM_PROVIDER", "gemini")
         self.model = model
 
+    def _usage_dir(self) -> str:
+        base = os.path.join(os.getcwd(), "data", "usage")
+        os.makedirs(base, exist_ok=True)
+        return base
+
+    def _record_usage(self, kind: str, provider: str, model: str, tokens_in: int, tokens_out: int, duration_ms: int) -> None:
+        import json, time
+        path = os.path.join(self._usage_dir(), "usage.jsonl")
+        rec = {
+            "ts": int(time.time()),
+            "kind": kind,
+            "provider": provider,
+            "model": model,
+            "tokens_in": int(tokens_in or 0),
+            "tokens_out": int(tokens_out or 0),
+            "duration_ms": int(duration_ms or 0),
+        }
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
     async def chat(self, prompt: str, context: Optional[str] = None) -> str:
+        import time
+        t0 = time.perf_counter()
         p = self.provider.lower()
         if p == "openai" and os.environ.get("OPENAI_API_KEY"):
             try:
@@ -20,7 +45,10 @@ class LLMGateway:
                     messages=[{"role": "user", "content": content}],
                     temperature=float(os.environ.get("CHAT_TEMPERATURE", "0.2")),
                 )
-                return (resp.choices[0].message.content or "").strip()
+                out = (resp.choices[0].message.content or "").strip()
+                dur = int((time.perf_counter() - t0) * 1000)
+                self._record_usage("chat", p, mdl, len(content) // 4, len(out) // 4, dur)
+                return out
             except Exception:
                 pass
         if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
@@ -31,7 +59,10 @@ class LLMGateway:
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
                 model = genai.GenerativeModel(mdl)
                 resp = model.generate_content(content)
-                return getattr(resp, "text", "").strip()
+                out = getattr(resp, "text", "").strip()
+                dur = int((time.perf_counter() - t0) * 1000)
+                self._record_usage("chat", p, mdl, len(content) // 4, len(out) // 4, dur)
+                return out
             except Exception:
                 pass
         if p == "openrouter" and os.environ.get("OPENROUTER_API_KEY"):
@@ -51,14 +82,20 @@ class LLMGateway:
                     r = http.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
                     if r.status_code == 200:
                         data = r.json()
-                        return (data["choices"][0]["message"]["content"] or "").strip()
+                        out = (data["choices"][0]["message"]["content"] or "").strip()
+                        dur = int((time.perf_counter() - t0) * 1000)
+                        self._record_usage("chat", p, mdl, len(content) // 4, len(out) // 4, dur)
+                        return out
             except Exception:
                 pass
         # fallback
         return ""
 
     async def stream_chat(self, prompt: str, context: Optional[str] = None):
+        import time
+        t0 = time.perf_counter()
         p = self.provider.lower()
+        acc = []
         if p == "openai" and os.environ.get("OPENAI_API_KEY"):
             try:
                 from openai import OpenAI
@@ -75,9 +112,13 @@ class LLMGateway:
                     try:
                         delta = ev.choices[0].delta.content
                         if delta:
+                            acc.append(delta)
                             yield delta
                     except Exception:
                         continue
+                out = "".join(acc)
+                dur = int((time.perf_counter() - t0) * 1000)
+                self._record_usage("chat_stream", p, mdl, len(content) // 4, len(out) // 4, dur)
                 return
             except Exception:
                 pass
@@ -92,16 +133,24 @@ class LLMGateway:
                 for ch in resp:
                     txt = getattr(ch, "text", "")
                     if txt:
+                        acc.append(txt)
                         yield txt
+                out = "".join(acc)
+                dur = int((time.perf_counter() - t0) * 1000)
+                self._record_usage("chat_stream", p, mdl, len(content) // 4, len(out) // 4, dur)
                 return
             except Exception:
                 pass
         # fallback: yield final answer once
         ans = await self.chat(prompt=prompt, context=context)
         if ans:
+            dur = int((time.perf_counter() - t0) * 1000)
+            self._record_usage("chat_stream", p, self.model or "", len(prompt) // 4, len(ans) // 4, dur)
             yield ans
 
     async def vision_markdown(self, image_bytes: bytes, prompt: str, model: Optional[str] = None) -> str:
+        import time
+        t0 = time.perf_counter()
         p = self.provider
         # DashScope (Qwen-VL compatible-mode)
         if p == "dashscope" and os.environ.get("DASHSCOPE_API_KEY"):
@@ -131,9 +180,12 @@ class LLMGateway:
                     r = await client.post(url, headers=headers, json=body)
                     r.raise_for_status()
                     data = r.json()
-                    return (
+                    out = (
                         ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
                     ).strip()
+                    dur = int((time.perf_counter() - t0) * 1000)
+                    self._record_usage("vision", p, mdl, len(prompt) // 4, len(out) // 4, dur)
+                    return out
             except Exception:
                 return ""
         # Volcengine Ark (compatible-mode)
@@ -164,9 +216,12 @@ class LLMGateway:
                     r = await client.post(url, headers=headers, json=body)
                     r.raise_for_status()
                     data = r.json()
-                    return (
+                    out = (
                         ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
                     ).strip()
+                    dur = int((time.perf_counter() - t0) * 1000)
+                    self._record_usage("vision", p, mdl, len(prompt) // 4, len(out) // 4, dur)
+                    return out
             except Exception:
                 return ""
         # Gemini vision (fallback if explicitly set)
@@ -182,7 +237,10 @@ class LLMGateway:
                         {"mime_type": "image/png", "data": image_bytes},
                     ]}
                 ])
-                return getattr(resp, "text", "").strip()
+                out = getattr(resp, "text", "").strip()
+                dur = int((time.perf_counter() - t0) * 1000)
+                self._record_usage("vision", p, (model or self.model or "gemini-1.5-flash"), len(prompt) // 4, len(out) // 4, dur)
+                return out
             except Exception:
                 return ""
         return ""

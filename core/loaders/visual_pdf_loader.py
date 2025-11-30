@@ -35,6 +35,13 @@ class VisualPDFLoader:
         pages = await self._pdf_pages(pdf_path)
         chunks: List[ProcessedChunk] = []
         for page_index, (image_bytes, page_text) in enumerate(pages, start=1):
+            try:
+                from PIL import Image
+                from io import BytesIO
+                im = Image.open(BytesIO(image_bytes))
+                w, h = im.size
+            except Exception:
+                w, h = (0, 0)
             table_crops = self._detect_tables_cached(pdf_path, page_index, image_bytes)
             for idx, (crop_bytes, bbox) in enumerate(table_crops):
                 table_md = await self._extract_table_markdown(crop_bytes)
@@ -57,7 +64,7 @@ class VisualPDFLoader:
                     "page_num": page_index,
                     "doc_id": pdf_path,
                     "chunk_index": i,
-                    "metadata": {"type": "visual", "confidence": 0.0},
+                    "metadata": {"type": "visual", "confidence": 0.0, "bbox": (0, 0, w, h)},
                 })
         return chunks
 
@@ -189,5 +196,27 @@ class VisualPDFLoader:
     def _chunk_text(self, text: str) -> List[str]:
         if not text:
             return []
-        size = 1000
-        return [text[i : i + size] for i in range(0, len(text), size)]
+        paras = [p.strip() for p in text.split("\n\n") if p.strip()]
+        chunks: List[str] = []
+        buf: List[str] = []
+        target_min, target_max = 800, 1400
+        for p in paras:
+            if len("\n\n".join(buf)) < target_min:
+                buf.append(p)
+                if len("\n\n".join(buf)) >= target_min:
+                    chunks.append("\n\n".join(buf))
+                    buf = []
+            else:
+                chunks.append("\n\n".join(buf))
+                buf = [p]
+        if buf:
+            chunks.append("\n\n".join(buf))
+        # 如果单个chunk过长，进行二次切分
+        out: List[str] = []
+        for c in chunks:
+            if len(c) <= target_max:
+                out.append(c)
+            else:
+                for i in range(0, len(c), target_max):
+                    out.append(c[i : i + target_max])
+        return out
