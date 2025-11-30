@@ -29,7 +29,24 @@ async def retrieve(state: RAGState) -> Dict:
         cjk = sum(1 for ch in t if '\u4e00' <= ch <= '\u9fff')
         return "cn" if (total and (cjk / total) >= 0.2) else "en"
 
-    vector_results = search_index(qvec, top_k=top_k, lang_hint=_lang_hint(query))
+    use_base = os.environ.get("USE_BASE_RETRIEVER") == "1"
+    vector_results = None
+    if use_base:
+        try:
+            from core.retriever.base_retriever import OmniIndexRetriever
+            retr = OmniIndexRetriever(top_k=top_k)
+            docs = retr._get_relevant_documents(query)
+            # map to [(meta, score)]
+            tmp = []
+            for d in docs:
+                meta = dict(d.metadata or {})
+                score = float(meta.get("score") or 0.0)
+                tmp.append((meta, score))
+            vector_results = tmp
+        except Exception:
+            vector_results = search_index(qvec, top_k=top_k, lang_hint=_lang_hint(query))
+    else:
+        vector_results = search_index(qvec, top_k=top_k, lang_hint=_lang_hint(query))
     kw = get_keyword_index()
     keyword_results = kw.search(query, top_k=top_k)
 
