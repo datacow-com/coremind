@@ -6,10 +6,13 @@ class Reranker:
     def __init__(self, model_name: str | None = None):
         self._ce = None
         name = model_name or os.environ.get("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
-        try:
-            from sentence_transformers import CrossEncoder
-            self._ce = CrossEncoder(name)
-        except Exception:
+        if os.environ.get("USE_CROSS_ENCODER") == "1":
+            try:
+                from sentence_transformers import CrossEncoder
+                self._ce = CrossEncoder(name)
+            except Exception:
+                self._ce = None
+        else:
             self._ce = None
 
     def _fallback_scores(self, query: str, texts: List[str]) -> List[float]:

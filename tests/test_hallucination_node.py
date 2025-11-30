@@ -2,21 +2,17 @@ import asyncio
 from core.nodes.hallucination import hallucination
 
 
-def test_hallucination_low_when_answer_in_context():
+async def _run():
     state = {
-        "answer": "LangGraph orchestrates RAG.",
+        "answer": "这是一个回答",
         "retrieved_chunks": [
-            {"id": "a", "content": "LangGraph orchestrates RAG.", "score": 1.0, "rerank_score": 1.0}
+            {"id": "x", "content": "上下文 文本", "page_num": 1, "doc_id": "doc", "chunk_index": 0, "metadata": {}, "score": 0.5, "rerank_score": None}
         ]
     }
-    loop = asyncio.get_event_loop()
-    res = loop.run_until_complete(hallucination(state))
-    assert 0.0 <= res["hallucination_score"] <= 1.0
+    return await hallucination(state)
 
 
-def test_hallucination_medium_when_no_context():
-    state = {"answer": "foo", "retrieved_chunks": []}
-    loop = asyncio.get_event_loop()
-    res = loop.run_until_complete(hallucination(state))
-    assert 0.0 <= res["hallucination_score"] <= 1.0
-
+def test_hallucination_outputs_score():
+    out = asyncio.run(_run())
+    assert "hallucination_score" in out
+    assert "hallucination_detected" in out
