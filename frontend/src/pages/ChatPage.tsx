@@ -40,6 +40,8 @@ const ChatPage: React.FC = () => {
   const [vectorWeight, setVectorWeight] = useState<number>(0.6)
   const [keywordWeight, setKeywordWeight] = useState<number>(0.4)
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true)
+  const [requestId, setRequestId] = useState<string | null>(null)
+  const [genStats, setGenStats] = useState<{chars:number,words:number}|null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -166,6 +168,11 @@ const ChatPage: React.FC = () => {
                     const status = evt.status as string
                     setPhase(`${name}:${status}`)
                     setPhaseHistory(prev => [...prev, `${name}:${status}`].slice(-6))
+                    if (name === 'generate' && status === 'end') {
+                      const chars = parseInt(evt.gen_chars || 0)
+                      const words = parseInt(evt.gen_words || 0)
+                      setGenStats({ chars, words })
+                    }
                   } else if (evt.type === 'answer' && evt.delta) {
                     setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: (m.content || '') + evt.delta } : m))
                   } else if (evt.type === 'final') {
@@ -177,6 +184,8 @@ const ChatPage: React.FC = () => {
                       setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, sources: evt.sources } : m))
                     }
                     finished = true
+                  } else if (evt.type === 'meta') {
+                    if (evt.request_id) setRequestId(String(evt.request_id))
                   }
                 } catch {}
               }
@@ -382,6 +391,12 @@ const ChatPage: React.FC = () => {
                   {streamError && <span className="text-red-600">{streamError}</span>}
                   {phaseHistory.length > 0 && (
                     <span className="ml-2 text-gray-400">[{phaseHistory.join(' > ')}]</span>
+                  )}
+                  {requestId && (
+                    <span className="ml-2 text-gray-400">req: {requestId}</span>
+                  )}
+                  {genStats && (
+                    <span className="ml-2 text-gray-400">gen: {genStats.chars} chars / {genStats.words} words</span>
                   )}
                 </div>
               )}

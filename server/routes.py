@@ -2,6 +2,7 @@ import os
 from uuid import uuid4
 from fastapi import APIRouter, UploadFile, Depends
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import Request
 from typing import List
 import json
 from core.graph import create_graph
@@ -19,6 +20,7 @@ from core.llm.gateway import LLMGateway
 from core.model_gateway.config_store import load_config, save_config, validate_provider, provider_category
 from server.auth import verify_token, create_token
 import base64
+import time
 
 router = APIRouter()
 secure_router = APIRouter(dependencies=[Depends(verify_token)])
@@ -213,7 +215,7 @@ async def chat(req: ChatRequest):
 
 
 @router.post("/chat/stream")
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, request: Request):
     uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
     doc_paths = None
     if req.document_ids:
@@ -228,7 +230,9 @@ async def chat_stream(req: ChatRequest):
 
     state: RAGState = {"query": req.query, "metadata": meta}
     # phase: retrieve
+    t_retrieve = time.perf_counter()
     ret = await retrieve_node(state)
+    dur_retrieve = int((time.perf_counter() - t_retrieve) * 1000)
     chunks = ret.get("retrieved_chunks") or []
     context = "\n\n".join([c.get("content", "") for c in chunks])
     sources = []
@@ -243,44 +247,59 @@ async def chat_stream(req: ChatRequest):
 
     async def event_gen():
         nonlocal chunks, context
+        # meta
+        rid = getattr(request.state, "request_id", None)
+        yield "data: " + json.dumps({"type": "meta", "request_id": rid}) + "\n\n"
         # phases
-        yield "data: " + json.dumps({"type": "phase", "name": "retrieve", "status": "end", "count": len(chunks)}) + "\n\n"
+        yield "data: " + json.dumps({"type": "phase", "name": "retrieve", "status": "end", "count": len(chunks), "duration_ms": dur_retrieve}) + "\n\n"
         # rerank
+        t_rerank = time.perf_counter()
         try:
             rs = await rerank_node({"retrieved_chunks": chunks})
             chunks_reranked = rs.get("retrieved_chunks") or chunks
-            yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "end", "count": len(chunks_reranked)}) + "\n\n"
+            yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "end", "count": len(chunks_reranked), "duration_ms": int((time.perf_counter() - t_rerank) * 1000)}) + "\n\n"
             chunks = chunks_reranked
         except Exception:
             yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "error"}) + "\n\n"
         # grade
+        t_grade = time.perf_counter()
         web_needed = False
         try:
             gs = await grade_node({"retrieved_chunks": chunks, "metadata": meta})
             web_needed = bool(gs.get("web_search_needed"))
-            yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "end", "web_search_needed": web_needed}) + "\n\n"
+            yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "end", "web_search_needed": web_needed, "duration_ms": int((time.perf_counter() - t_grade) * 1000)}) + "\n\n"
         except Exception:
             yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "error"}) + "\n\n"
         # optional web_search
         if web_needed:
+            t_ws = time.perf_counter()
             try:
                 ws = await web_search_node({"query": req.query})
                 extra_ctx = ws.get("context") or ""
                 if extra_ctx:
                     nonlocal context
                     context = (context + "\n\n" + extra_ctx).strip()
-                yield "data: " + json.dumps({"type": "phase", "name": "web_search", "status": "end"}) + "\n\n"
+                yield "data: " + json.dumps({"type": "phase", "name": "web_search", "status": "end", "duration_ms": int((time.perf_counter() - t_ws) * 1000)}) + "\n\n"
             except Exception:
                 yield "data: " + json.dumps({"type": "phase", "name": "web_search", "status": "error"}) + "\n\n"
         # generate start
+        gen_start = time.perf_counter()
         yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "start"}) + "\n\n"
+        total_chars = 0
+        total_words = 0
         gw = LLMGateway()
         async for delta in gw.stream_chat(prompt=req.query, context=context):
             try:
                 payload = {"type": "answer", "delta": delta}
                 yield "data: " + json.dumps(payload) + "\n\n"
+                try:
+                    total_chars += len(delta)
+                    total_words += len(delta.split())
+                except Exception:
+                    pass
             except Exception:
                 continue
+        yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "end", "duration_ms": int((time.perf_counter() - gen_start) * 1000), "gen_chars": total_chars, "gen_words": total_words}) + "\n\n"
         final = {"type": "final", "sources": sources, "conversation_id": req.conversation_id or str(uuid4())}
         yield "data: " + json.dumps(final) + "\n\n"
 
