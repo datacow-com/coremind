@@ -72,6 +72,8 @@ class LLMGateway:
                             http.post(webhook, json=payload)
                     except Exception:
                         pass
+        except Exception:
+            pass
 
     async def chat(self, prompt: str, context: Optional[str] = None) -> str:
         import time
@@ -131,6 +133,23 @@ class LLMGateway:
                         return out
             except Exception:
                 pass
+        if p == "ollama" or os.environ.get("OLLAMA_URL"):
+            try:
+                import httpx
+                base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+                mdl = self.model or os.environ.get("OLLAMA_MODEL", "qwen2:7b")
+                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
+                payload = {"model": mdl, "prompt": content, "stream": False}
+                with httpx.Client(timeout=20.0) as http:
+                    r = http.post(f"{base}/api/generate", json=payload)
+                    if r.status_code == 200:
+                        data = r.json()
+                        out = (data.get("response") or "").strip()
+                        dur = int((time.perf_counter() - t0) * 1000)
+                        self._record_usage("chat", "ollama", mdl, len(content) // 4, len(out) // 4, dur)
+                        return out
+            except Exception:
+                pass
         # fallback
         return ""
 
@@ -181,6 +200,33 @@ class LLMGateway:
                 out = "".join(acc)
                 dur = int((time.perf_counter() - t0) * 1000)
                 self._record_usage("chat_stream", p, mdl, len(content) // 4, len(out) // 4, dur)
+                return
+            except Exception:
+                pass
+        if p == "ollama" or os.environ.get("OLLAMA_URL"):
+            try:
+                import httpx
+                base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+                mdl = self.model or os.environ.get("OLLAMA_MODEL", "qwen2:7b")
+                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
+                payload = {"model": mdl, "prompt": content, "stream": True}
+                acc = []
+                with httpx.Client(timeout=20.0) as http:
+                    with http.stream("POST", f"{base}/api/generate", json=payload) as resp:
+                        for chunk in resp.iter_lines():
+                            try:
+                                if not chunk:
+                                    continue
+                                jd = json.loads(chunk)
+                                delta = jd.get("response")
+                                if delta:
+                                    acc.append(delta)
+                                    yield delta
+                            except Exception:
+                                continue
+                out = "".join(acc)
+                dur = int((time.perf_counter() - t0) * 1000)
+                self._record_usage("chat_stream", "ollama", mdl, len(content) // 4, len(out) // 4, dur)
                 return
             except Exception:
                 pass

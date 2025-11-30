@@ -28,8 +28,18 @@ def create_graph():
     graph.add_node("hallucination", hallucination)
 
     graph.set_entry_point("route")
+    def route_router(state: RAGState) -> str:
+        intent = (state.get("intent") or "qa").lower()
+        if intent == "summarize":
+            return "generate"
+        if intent == "web_search":
+            return "web_search"
+        # execute 暂时路由到 web_search 或后续工具节点
+        if intent == "execute":
+            return "web_search"
+        return "retrieve"
 
-    graph.add_edge("route", "retrieve")
+    graph.add_conditional_edges("route", route_router)
     graph.add_edge("retrieve", "rerank")
     graph.add_edge("rerank", "grade")
 
