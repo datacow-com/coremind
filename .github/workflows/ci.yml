@@ -46,7 +46,27 @@ jobs:
   test:
     runs-on: ubuntu-latest
     needs: lint
-    
+  
+  build_frontends:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+      - name: Build embedded UI
+        run: |
+          cd apps/embedded-ui
+          npm ci
+          npm run build
     steps:
       - name: Checkout
         uses: actions/checkout@v4

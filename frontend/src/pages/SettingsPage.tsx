@@ -57,6 +57,7 @@ const SettingsPage: React.FC = () => {
   const [vectorWeight, setVectorWeight] = useState<number>(0.6)
   const [keywordWeight, setKeywordWeight] = useState<number>(0.4)
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true)
+  const [collections, setCollections] = useState<Array<{name:string, document_count:number, chunk_count:number, embedding_dimension:number, distance_metric:string}>>([])
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -83,6 +84,12 @@ const SettingsPage: React.FC = () => {
         if (rg.ok) {
           const gd = await rg.json()
           setGroups(gd.groups || {domestic: [], foreign: [], local: [], other: []})
+        }
+
+        const vc = await fetch('/api/vector-store/collections')
+        if (vc.ok) {
+          const cd = await vc.json()
+          setCollections(cd.collections || [])
         }
       } catch (e) {
         // noop
@@ -461,6 +468,32 @@ const SettingsPage: React.FC = () => {
                 onChange={(e) => updateVectorStoreSetting('embedding_model', e.target.value)}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="text-sm font-medium text-gray-900 mb-2">Collections</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left">
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Chunks</th>
+                    <th className="px-3 py-2">Dim</th>
+                    <th className="px-3 py-2">Metric</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {collections.map(c => (
+                    <tr key={c.name} className="border-t">
+                      <td className="px-3 py-2 font-medium">{c.name}</td>
+                      <td className="px-3 py-2">{c.chunk_count}</td>
+                      <td className="px-3 py-2">{c.embedding_dimension}</td>
+                      <td className="px-3 py-2">{c.distance_metric}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

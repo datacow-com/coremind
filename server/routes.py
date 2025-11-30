@@ -8,7 +8,7 @@ import json
 from core.graph import create_graph
 from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
-from core.storage.index_router import list_page_meta, doc_stats, delete_document, search as index_search, get_backends
+from core.storage.index_router import list_page_meta, doc_stats, delete_document, search as index_search, get_backends, list_collections_info
 from core.storage.local_index import get_index
 from core.embedding.provider_embedder import Embedder
 from core.nodes.retrieve import retrieve as retrieve_node
@@ -305,31 +305,7 @@ async def chat_stream(req: ChatRequest, request: Request):
 
 @router.get("/vector-store/collections")
 async def vector_collections():
-    milvus, ok = get_backends()
-    collections = []
-    if ok and getattr(milvus, "collection", None) is not None:
-        name = milvus.collection_name
-        try:
-            chunk_count = int(getattr(milvus.collection, "num_entities", 0))
-        except Exception:
-            chunk_count = 0
-        collections.append({
-            "name": name,
-            "document_count": 0,
-            "chunk_count": chunk_count,
-            "embedding_dimension": milvus.dim,
-            "distance_metric": "COSINE",
-        })
-    else:
-        stats = get_index().stats_all()
-        collections.append({
-            "name": "local_index",
-            "document_count": stats.get("document_count", 0),
-            "chunk_count": stats.get("chunk_count", 0),
-            "embedding_dimension": stats.get("embedding_dimension", 256),
-            "distance_metric": "cosine",
-        })
-    return {"collections": collections}
+    return {"collections": list_collections_info()}
 
 
 @router.post("/vector-store/search")

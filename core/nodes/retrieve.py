@@ -20,7 +20,16 @@ async def retrieve(state: RAGState) -> Dict:
     top_k = int(meta.get("top_k") or 5)
     doc_paths = meta.get("doc_paths") or None
     t0 = time.perf_counter()
-    vector_results = search_index(qvec, top_k=top_k)
+    # 语言提示：用于双栈集合选择
+    def _lang_hint(text: str) -> str:
+        t = (text or "").strip()
+        if not t:
+            return "en"
+        total = len(t)
+        cjk = sum(1 for ch in t if '\u4e00' <= ch <= '\u9fff')
+        return "cn" if (total and (cjk / total) >= 0.2) else "en"
+
+    vector_results = search_index(qvec, top_k=top_k, lang_hint=_lang_hint(query))
     kw = get_keyword_index()
     keyword_results = kw.search(query, top_k=top_k)
 
