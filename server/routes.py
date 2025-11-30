@@ -7,6 +7,8 @@ from typing import List, Dict
 import json
 from core.graph import create_graph
 from core.ingestion import create_ingest_graph
+from core.ingestion.image_ingest import create_image_ingest_graph
+from core.ingestion.markdown_ingest import create_markdown_ingest_graph
 from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document, search as index_search, get_backends, list_collections_info
@@ -395,6 +397,41 @@ async def ingest_pdf(file: UploadFile = File(...)):
         with open(out_md, "w", encoding="utf-8") as f:
             f.write(md)
         return {"document_id": stem, "md": md, "md_path": out_md}
+
+@router.post("/ingest/image")
+async def ingest_image(file: UploadFile = File(...)):
+    uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    uploads_tmp = os.path.join(uploads_dir, "tmp")
+    os.makedirs(uploads_tmp, exist_ok=True)
+    try:
+        tmp_name = f"{uuid4()}_{file.filename}"
+        tmp_path = os.path.join(uploads_tmp, tmp_name)
+        content = await file.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        app = create_image_ingest_graph()
+        res = await app.ainvoke({"file_paths": [tmp_path], "md": None, "meta": {}})
+        return {"document_id": tmp_name, "md": res.get("md"), "md_path": (res.get("meta") or {}).get("md_path")}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.post("/ingest/markdown")
+async def ingest_markdown(file: UploadFile = File(...)):
+    uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    uploads_tmp = os.path.join(uploads_dir, "tmp")
+    os.makedirs(uploads_tmp, exist_ok=True)
+    try:
+        tmp_name = f"{uuid4()}_{file.filename}"
+        tmp_path = os.path.join(uploads_tmp, tmp_name)
+        content = await file.read()
+        text = content.decode("utf-8", errors="ignore")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(text)
+        app = create_markdown_ingest_graph()
+        res = await app.ainvoke({"file_path": tmp_path, "md": None, "meta": {}})
+        return {"document_id": tmp_name, "md": res.get("md"), "md_path": (res.get("meta") or {}).get("md_path")}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
     return user
