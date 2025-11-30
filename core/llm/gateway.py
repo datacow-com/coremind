@@ -13,7 +13,7 @@ class LLMGateway:
         return base
 
     def _record_usage(self, kind: str, provider: str, model: str, tokens_in: int, tokens_out: int, duration_ms: int) -> None:
-        import json, time
+        import json, time, httpx
         path = os.path.join(self._usage_dir(), "usage.jsonl")
         rec = {
             "ts": int(time.time()),
@@ -29,6 +29,49 @@ class LLMGateway:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except Exception:
             pass
+        # Threshold check and webhook
+        try:
+            th_path = os.path.join(self._usage_dir(), "thresholds.json")
+            if os.path.exists(th_path):
+                with open(th_path, "r", encoding="utf-8") as tf:
+                    th = json.load(tf)
+                # Simple daily aggregation in-memory
+                day = time.strftime("%Y-%m-%d", time.gmtime(rec["ts"]))
+                agg_tokens = 0
+                agg_calls = 0
+                try:
+                    with open(path, "r", encoding="utf-8") as rf:
+                        for line in rf:
+                            try:
+                                x = json.loads(line.strip())
+                                d = time.strftime("%Y-%m-%d", time.gmtime(x.get("ts", rec["ts"])))
+                                if d == day:
+                                    agg_calls += 1
+                                    agg_tokens += int(x.get("tokens_in") or 0) + int(x.get("tokens_out") or 0)
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
+                exceed = (
+                    (int(th.get("max_tokens_per_day") or 0) and agg_tokens >= int(th.get("max_tokens_per_day") or 0))
+                    or (int(th.get("max_calls_per_day") or 0) and agg_calls >= int(th.get("max_calls_per_day") or 0))
+                )
+                webhook = th.get("webhook_url")
+                if exceed and webhook:
+                    payload = {
+                        "day": day,
+                        "calls": agg_calls,
+                        "tokens": agg_tokens,
+                        "provider": provider,
+                        "model": model,
+                        "kind": kind,
+                        "msg": "Threshold exceeded",
+                    }
+                    try:
+                        with httpx.Client(timeout=5.0) as http:
+                            http.post(webhook, json=payload)
+                    except Exception:
+                        pass
 
     async def chat(self, prompt: str, context: Optional[str] = None) -> str:
         import time
