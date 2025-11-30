@@ -11,6 +11,9 @@ from core.storage.index_router import list_page_meta, doc_stats, delete_document
 from core.storage.local_index import get_index
 from core.embedding.provider_embedder import Embedder
 from core.nodes.retrieve import retrieve as retrieve_node
+from core.nodes.rerank import rerank as rerank_node
+from core.nodes.grade import grade as grade_node
+from core.nodes.web_search import web_search as web_search_node
 from core.state import RAGState
 from core.llm.gateway import LLMGateway
 from core.model_gateway.config_store import load_config, save_config, validate_provider, provider_category
@@ -218,7 +221,8 @@ async def chat_stream(req: ChatRequest):
     meta = {"top_k": int(req.top_k or 5), "doc_paths": doc_paths}
 
     state: RAGState = {"query": req.query, "metadata": meta}
-    ret = await retrieve_node(state)  # reuse retrieve node
+    # phase: retrieve
+    ret = await retrieve_node(state)
     chunks = ret.get("retrieved_chunks") or []
     context = "\n\n".join([c.get("content", "") for c in chunks])
     sources = []
@@ -232,7 +236,38 @@ async def chat_stream(req: ChatRequest):
         })
 
     async def event_gen():
-        yield "data: " + json.dumps({"type": "retrieved", "count": len(chunks)}) + "\n\n"
+        nonlocal chunks, context
+        # phases
+        yield "data: " + json.dumps({"type": "phase", "name": "retrieve", "status": "end", "count": len(chunks)}) + "\n\n"
+        # rerank
+        try:
+            rs = await rerank_node({"retrieved_chunks": chunks})
+            chunks_reranked = rs.get("retrieved_chunks") or chunks
+            yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "end", "count": len(chunks_reranked)}) + "\n\n"
+            chunks = chunks_reranked
+        except Exception:
+            yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "error"}) + "\n\n"
+        # grade
+        web_needed = False
+        try:
+            gs = await grade_node({"retrieved_chunks": chunks})
+            web_needed = bool(gs.get("web_search_needed"))
+            yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "end", "web_search_needed": web_needed}) + "\n\n"
+        except Exception:
+            yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "error"}) + "\n\n"
+        # optional web_search
+        if web_needed:
+            try:
+                ws = await web_search_node({"query": req.query})
+                extra_ctx = ws.get("context") or ""
+                if extra_ctx:
+                    nonlocal context
+                    context = (context + "\n\n" + extra_ctx).strip()
+                yield "data: " + json.dumps({"type": "phase", "name": "web_search", "status": "end"}) + "\n\n"
+            except Exception:
+                yield "data: " + json.dumps({"type": "phase", "name": "web_search", "status": "error"}) + "\n\n"
+        # generate start
+        yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "start"}) + "\n\n"
         gw = LLMGateway()
         async for delta in gw.stream_chat(prompt=req.query, context=context):
             try:

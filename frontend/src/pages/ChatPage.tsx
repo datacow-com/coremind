@@ -34,6 +34,9 @@ const ChatPage: React.FC = () => {
   const [previewBBoxes, setPreviewBBoxes] = useState<Array<{x:number,y:number,w:number,h:number}>>([])
   const [topK, setTopK] = useState<number>(5)
   const [streaming, setStreaming] = useState<boolean>(true)
+  const [phase, setPhase] = useState<string>('idle')
+  const [phaseHistory, setPhaseHistory] = useState<string[]>([])
+  const [streamError, setStreamError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -121,44 +124,62 @@ const ChatPage: React.FC = () => {
       if (streaming) {
         const assistantMessage: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: '' }
         setMessages(prev => [...prev, assistantMessage])
-        const response = await fetch('/api/chat/stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: input,
-            conversation_id: conversationId,
-            document_ids: selectedDocument ? [selectedDocument] : undefined,
-            top_k: topK,
-            temperature: 0.7
-          })
-        })
-        const reader = response.body?.getReader()
-        const decoder = new TextDecoder()
-        let buf = ''
-        while (true) {
-          const r = await reader?.read()
-          if (!r || r.done) break
-          buf += decoder.decode(r.value, { stream: true })
-          const parts = buf.split('\n\n')
-          buf = parts.pop() || ''
-          for (const chunk of parts) {
-            const line = chunk.trim()
-            if (!line.startsWith('data:')) continue
-            const jsonStr = line.slice(5).trim()
-            try {
-              const evt = JSON.parse(jsonStr)
-              if (evt.type === 'answer' && evt.delta) {
-                setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: (m.content || '') + evt.delta } : m))
-              } else if (evt.type === 'final') {
-                setConversationId(evt.conversation_id)
-                try { if (evt.conversation_id) localStorage.setItem('omnirag_conversation_id', evt.conversation_id) } catch {}
-                if (evt.sources && evt.sources.length > 0) {
-                  const firstSource = evt.sources[0]
-                  await loadPreviewForSource(firstSource)
-                  setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, sources: evt.sources } : m))
-                }
+        const payload = {
+          query: input,
+          conversation_id: conversationId,
+          document_ids: selectedDocument ? [selectedDocument] : undefined,
+          top_k: topK,
+          temperature: 0.7
+        }
+        const maxAttempts = 3
+        let attempt = 0
+        let finished = false
+        setStreamError(null)
+        while (attempt < maxAttempts && !finished) {
+          try {
+            const response = await fetch('/api/chat/stream', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            })
+            const reader = response.body?.getReader()
+            const decoder = new TextDecoder()
+            let buf = ''
+            while (true) {
+              const r = await reader?.read()
+              if (!r || r.done) break
+              buf += decoder.decode(r.value, { stream: true })
+              const parts = buf.split('\n\n')
+              buf = parts.pop() || ''
+              for (const chunk of parts) {
+                const line = chunk.trim()
+                if (!line.startsWith('data:')) continue
+                const jsonStr = line.slice(5).trim()
+                try {
+                  const evt = JSON.parse(jsonStr)
+                  if (evt.type === 'phase') {
+                    const name = evt.name as string
+                    const status = evt.status as string
+                    setPhase(`${name}:${status}`)
+                    setPhaseHistory(prev => [...prev, `${name}:${status}`].slice(-6))
+                  } else if (evt.type === 'answer' && evt.delta) {
+                    setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: (m.content || '') + evt.delta } : m))
+                  } else if (evt.type === 'final') {
+                    setConversationId(evt.conversation_id)
+                    try { if (evt.conversation_id) localStorage.setItem('omnirag_conversation_id', evt.conversation_id) } catch {}
+                    if (evt.sources && evt.sources.length > 0) {
+                      const firstSource = evt.sources[0]
+                      await loadPreviewForSource(firstSource)
+                      setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, sources: evt.sources } : m))
+                    }
+                    finished = true
+                  }
+                } catch {}
               }
-            } catch {}
+            }
+            if (!finished) throw new Error('stream interrupted')
+          } catch (e) {
+            attempt++
+            setStreamError(`Stream interrupted, retry ${attempt}/${maxAttempts}`)
+            await new Promise(res => setTimeout(res, Math.pow(2, attempt) * 500))
           }
         }
       } else {
@@ -319,6 +340,15 @@ const ChatPage: React.FC = () => {
                 <label className="text-gray-600">Stream</label>
                 <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
               </div>
+              {streaming && (
+                <div className="text-xs text-gray-600">
+                  <span className="mr-2">Phase: {phase}</span>
+                  {streamError && <span className="text-red-600">{streamError}</span>}
+                  {phaseHistory.length > 0 && (
+                    <span className="ml-2 text-gray-400">[{phaseHistory.join(' > ')}]</span>
+                  )}
+                </div>
+              )}
               
               <input
                 ref={fileInputRef}
