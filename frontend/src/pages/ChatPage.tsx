@@ -49,6 +49,8 @@ const ChatPage: React.FC = () => {
   const [exportLinks, setExportLinks] = useState<Record<string, string>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputExtRef = useRef<HTMLInputElement>(null)
+  const [lastIngestInfo, setLastIngestInfo] = useState<{type:string, md_path:string, document_id:string}|null>(null)
 
   const extractDocumentId = (documentName: string): string | null => {
     try {
@@ -344,6 +346,34 @@ const ChatPage: React.FC = () => {
     }
   }
 
+  const handleExtIngestUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const name = (file.name || '').toLowerCase()
+    const ext = name.split('.').pop() || ''
+    const formData = new FormData()
+    formData.append('file', file)
+    let endpoint = ''
+    if (['png','jpg','jpeg','webp'].includes(ext)) endpoint = '/api/ingest/image'
+    else if (ext === 'md' || ext === 'markdown') endpoint = '/api/ingest/markdown'
+    else if (ext === 'docx') endpoint = '/api/ingest/docx'
+    else if (ext === 'pptx') endpoint = '/api/ingest/pptx'
+    else if (ext === 'xlsx') endpoint = '/api/ingest/xlsx'
+    else if (ext === 'html' || ext === 'htm') endpoint = '/api/ingest/html'
+    else if (ext === 'eml') endpoint = '/api/ingest/eml'
+    else {
+      return
+    }
+    try {
+      const response = await fetch(endpoint, { method: 'POST', body: formData })
+      if (!response.ok) throw new Error('Failed to ingest file')
+      const data = await response.json()
+      setLastIngestInfo({ type: ext, md_path: data.md_path || '', document_id: data.document_id || '' })
+    } catch (e) {
+      // noop
+    }
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -487,6 +517,13 @@ const ChatPage: React.FC = () => {
                 onChange={handleFileUpload}
                 className="hidden"
               />
+              <input
+                ref={fileInputExtRef}
+                type="file"
+                accept=".docx,.pptx,.xlsx,.md,.markdown,.png,.jpg,.jpeg,.webp,.html,.htm,.eml"
+                onChange={handleExtIngestUpload}
+                className="hidden"
+              />
               
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -494,6 +531,13 @@ const ChatPage: React.FC = () => {
               >
                 <Upload className="h-4 w-4" />
                 <span>Upload PDF</span>
+              </button>
+              <button
+                onClick={() => fileInputExtRef.current?.click()}
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                <Upload className="h-4 w-4" />
+                <span>Ingest Other</span>
               </button>
             </div>
           </div>
@@ -588,16 +632,22 @@ const ChatPage: React.FC = () => {
         </div>
       </div>
 
-      {/* PDF Preview Panel */}
-      <div className="w-96 bg-white border-l">
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">PDF Preview</h3>
-          <button onClick={clearPreview} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">Clear</button>
-        </div>
-        <div className="p-4">
-          {pdfPreview ? (
-            <div className="text-sm text-gray-600">
-              <p className="mb-2">{pdfPreview}</p>
+        {/* PDF Preview Panel */}
+        <div className="w-96 bg-white border-l">
+          <div className="p-4 border-b flex items-center justify-between">
+            <h3 className="font-semibold text-gray-800">PDF Preview</h3>
+            <button onClick={clearPreview} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">Clear</button>
+          </div>
+          <div className="p-4">
+            {lastIngestInfo && (
+              <div className="mb-4 text-xs text-gray-600">
+                <div>Last Ingest: <span className="font-medium">.{lastIngestInfo.type}</span></div>
+                {lastIngestInfo.md_path && (<div className="truncate">md: {lastIngestInfo.md_path}</div>)}
+              </div>
+            )}
+            {pdfPreview ? (
+              <div className="text-sm text-gray-600">
+                <p className="mb-2">{pdfPreview}</p>
               {previewImg ? (
                 <div className="relative border rounded overflow-hidden">
                   <img src={previewImg} alt="preview" className="max-w-full" />
