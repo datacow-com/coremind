@@ -89,7 +89,8 @@ class VisualPDFLoader:
         if not self.parsing_rule.prefer_ocr or self.parsing_rule.force_vision or use_vision:
             try:
                 from core.llm.gateway import LLMGateway
-                gw = LLMGateway()
+                import os
+                gw = LLMGateway(provider=os.environ.get("VISION_PROVIDER", "dashscope"))
                 prompt = (
                     "将此页面内容转换为结构化Markdown，保持标题层级、列表与表格结构。"
                     "若为表格，请尽可能准确还原，保留合并单元格信息。"
@@ -176,7 +177,8 @@ class VisualPDFLoader:
         if not self.parsing_rule.prefer_ocr:
             try:
                 from core.llm.gateway import LLMGateway
-                gw = LLMGateway()
+                import os
+                gw = LLMGateway(provider=os.environ.get("VISION_PROVIDER", "dashscope"))
                 text = await gw.vision_table_markdown(image_bytes=crop_bytes)
                 if text:
                     return text

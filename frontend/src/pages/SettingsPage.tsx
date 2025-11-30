@@ -49,7 +49,7 @@ const SettingsPage: React.FC = () => {
   const [groups, setGroups] = useState<{domestic: any[], foreign: any[], local: any[], other: any[]}>({domestic: [], foreign: [], local: [], other: []})
   const [activeTab, setActiveTab] = useState<'domestic'|'foreign'|'local'|'other'>('foreign')
   const [bindings, setBindings] = useState<{parse: string, retrieve: string, chat: string, rerank: string}>({
-    parse: 'gemini',
+    parse: 'dashscope',
     retrieve: 'embedding',
     chat: 'gemini',
     rerank: 'cross_encoder',

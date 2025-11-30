@@ -9,7 +9,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "providers.json")
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "bindings": {
-        "parse": "gemini",
+        "parse": "dashscope",
         "retrieve": "embedding",
         "chat": "gemini",
         "rerank": "cross_encoder",
@@ -25,6 +25,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         {"name": "anthropic", "model": "claude-3-5-sonnet", "base_url": "https://api.anthropic.com"},
         {"name": "openrouter", "model": "meta-llama/llama-3.1-8b-instruct", "base_url": "https://openrouter.ai/api"},
         {"name": "dashscope", "model": "qwen-max", "base_url": "https://dashscope.aliyuncs.com"},
+        {"name": "ark", "model": "ep-vision", "base_url": "https://api.ark.cn-beijing.volces.com"},
         {"name": "moonshot", "model": "moonshot-v1-8k", "base_url": "https://api.moonshot.cn"},
         {"name": "qianfan", "model": "ERNIE-Speed-8K", "base_url": "https://api.baidu.com"},
         {"name": "zhipu", "model": "glm-4-flash", "base_url": "https://open.bigmodel.cn"},
@@ -39,7 +40,8 @@ REQUIRED_ENV = {
     "gemini": ["GEMINI_API_KEY"],
     "anthropic": ["ANTHROPIC_API_KEY"],
     "openrouter": ["OPENROUTER_API_KEY"],
-    "dashscope": ["DASHSCOPE_API_KEY"],
+    "dashscope": ["DASHSCOPE_API_KEY", "DASHSCOPE_COMPAT_URL"],
+    "ark": ["VOLCENGINE_API_KEY", "VOLCENGINE_COMPAT_URL"],
     "moonshot": ["MOONSHOT_API_KEY"],
     "qianfan": ["QIANFAN_API_KEY"],
     "zhipu": ["ZHIPU_API_KEY"],
@@ -78,7 +80,7 @@ def validate_provider(name: str) -> Dict[str, Any]:
 
 def provider_category(name: str) -> str:
     n = name.lower()
-    if n in {"dashscope", "moonshot", "qianfan", "zhipu", "deepseek"}:
+    if n in {"dashscope", "ark", "moonshot", "qianfan", "zhipu", "deepseek"}:
         return "domestic"
     if n in {"openai", "anthropic", "gemini", "openrouter"}:
         return "foreign"

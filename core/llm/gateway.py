@@ -4,7 +4,8 @@ import os
 
 class LLMGateway:
     def __init__(self, provider: Optional[str] = None, model: Optional[str] = None):
-        self.provider = provider or os.environ.get("LLM_PROVIDER", "gemini")
+        vp = os.environ.get("VISION_PROVIDER")
+        self.provider = provider or vp or os.environ.get("LLM_PROVIDER", "dashscope")
         self.model = model
 
     async def chat(self, prompt: str, context: Optional[str] = None) -> str:
@@ -102,11 +103,78 @@ class LLMGateway:
             yield ans
 
     async def vision_markdown(self, image_bytes: bytes, prompt: str, model: Optional[str] = None) -> str:
-        p = self.provider.lower()
-        if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
+        p = self.provider
+        # DashScope (Qwen-VL compatible-mode)
+        if p == "dashscope" and os.environ.get("DASHSCOPE_API_KEY"):
+            import base64
+            import httpx
+            key = os.environ.get("DASHSCOPE_API_KEY")
+            url = os.environ.get("DASHSCOPE_COMPAT_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
+            mdl = model or self.model or os.environ.get("DASHSCOPE_VISION_MODEL", "qwen-plus")
+            b64 = base64.b64encode(image_bytes).decode("utf-8")
+            body = {
+                "model": mdl,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "input_image", "image_url": f"data:image/png;base64,{b64}"},
+                        ],
+                    }
+                ],
+                "stream": False,
+                "max_tokens": int(os.environ.get("VISION_MAX_TOKENS", "2000")),
+            }
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+                async with httpx.AsyncClient(timeout=30) as client:
+                    r = await client.post(url, headers=headers, json=body)
+                    r.raise_for_status()
+                    data = r.json()
+                    return (
+                        ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
+                    ).strip()
+            except Exception:
+                return ""
+        # Volcengine Ark (compatible-mode)
+        if p in {"ark", "volcengine"} and os.environ.get("VOLCENGINE_API_KEY"):
+            import base64
+            import httpx
+            key = os.environ.get("VOLCENGINE_API_KEY")
+            url = os.environ.get("VOLCENGINE_COMPAT_URL", "https://api.ark.cn-beijing.volces.com/v3/chat/completions")
+            mdl = model or self.model or os.environ.get("VOLCENGINE_VISION_MODEL", os.environ.get("ARK_VISION_MODEL", "ep-vision"))
+            b64 = base64.b64encode(image_bytes).decode("utf-8")
+            body = {
+                "model": mdl,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "input_image", "image_url": f"data:image/png;base64,{b64}"},
+                        ],
+                    }
+                ],
+                "stream": False,
+                "max_tokens": int(os.environ.get("VISION_MAX_TOKENS", "2000")),
+            }
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    r = await client.post(url, headers=headers, json=body)
+                    r.raise_for_status()
+                    data = r.json()
+                    return (
+                        ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
+                    ).strip()
+            except Exception:
+                return ""
+        # Gemini vision (fallback if explicitly set)
+        if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
+            import google.generativeai as genai
+            genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+            try:
                 mdl = model or self.model or os.environ.get("GEMINI_VISION_MODEL", "gemini-1.5-flash")
                 gg = genai.GenerativeModel(mdl)
                 resp = gg.generate_content([
