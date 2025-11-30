@@ -416,6 +416,28 @@ async def ingest_pdf(file: UploadFile = File(...)):
             f.write(md)
         return {"document_id": stem, "md": md, "md_path": out_md}
 
+def _md_table_to_csv(md: str) -> str:
+    lines = [l.strip() for l in (md or "").splitlines() if l.strip()]
+    rows = []
+    for l in lines:
+        if l.startswith("|") and l.endswith("|"):
+            parts = [p.strip() for p in l.split("|")][1:-1]
+            if all(set(p) <= set("-: ") for p in parts):
+                continue
+            rows.append(parts)
+    csv_lines = []
+    for r in rows:
+        csv_lines.append(",".join([p.replace(",", " ") for p in r]))
+    return "\n".join(csv_lines)
+
+@router.post("/execute/export")
+async def export_csv(payload: dict):
+    tables = payload.get("tables") or []
+    out_parts = []
+    for t in tables:
+        out_parts.append(_md_table_to_csv(t or ""))
+    return {"csv": "\n\n".join(out_parts)}
+
 @router.post("/ingest/image")
 async def ingest_image(file: UploadFile = File(...)):
     uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
