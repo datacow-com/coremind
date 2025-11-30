@@ -183,6 +183,9 @@ const ChatPage: React.FC = () => {
                       await loadPreviewForSource(firstSource)
                       setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, sources: evt.sources } : m))
                     }
+                    if (evt.answer) {
+                      setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: (m.content || '') + evt.answer } : m))
+                    }
                     finished = true
                   } else if (evt.type === 'meta') {
                     if (evt.request_id) setRequestId(String(evt.request_id))

@@ -227,11 +227,13 @@ async def chat_stream(req: ChatRequest, request: Request):
     doc_paths = None
     if req.document_ids:
         doc_paths = [os.path.join(uploads_dir, f"{did}.pdf") for did in req.document_ids]
+    cfg = load_config()
+    defaults = (cfg.get("settings") or {})
     meta = {
         "top_k": int(req.top_k or 5),
         "doc_paths": doc_paths,
-        "vector_weight": float(req.vector_weight) if req.vector_weight is not None else None,
-        "keyword_weight": float(req.keyword_weight) if req.keyword_weight is not None else None,
+        "vector_weight": float(req.vector_weight) if req.vector_weight is not None else float(defaults.get("vector_weight", 0.6)),
+        "keyword_weight": float(req.keyword_weight) if req.keyword_weight is not None else float(defaults.get("keyword_weight", 0.4)),
         "web_search_enabled": True if req.web_search_enabled is None else bool(req.web_search_enabled),
     }
 
@@ -295,19 +297,28 @@ async def chat_stream(req: ChatRequest, request: Request):
         total_chars = 0
         total_words = 0
         gw = LLMGateway()
-        async for delta in gw.stream_chat(prompt=req.query, context=context):
-            try:
-                payload = {"type": "answer", "delta": delta}
-                yield "data: " + json.dumps(payload) + "\n\n"
+        final_answer = None
+        try:
+            async for delta in gw.stream_chat(prompt=req.query, context=context):
                 try:
-                    total_chars += len(delta)
-                    total_words += len(delta.split())
+                    payload = {"type": "answer", "delta": delta}
+                    yield "data: " + json.dumps(payload) + "\n\n"
+                    try:
+                        total_chars += len(delta)
+                        total_words += len(delta.split())
+                    except Exception:
+                        pass
                 except Exception:
-                    pass
+                    continue
+        except Exception:
+            # fallback to non-stream
+            try:
+                final_answer = await gw.chat(prompt=req.query, context=context)
+                yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "fallback"}) + "\n\n"
             except Exception:
-                continue
+                yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "error"}) + "\n\n"
         yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "end", "duration_ms": int((time.perf_counter() - gen_start) * 1000), "gen_chars": total_chars, "gen_words": total_words}) + "\n\n"
-        final = {"type": "final", "sources": sources, "conversation_id": req.conversation_id or str(uuid4())}
+        final = {"type": "final", "sources": sources, "conversation_id": req.conversation_id or str(uuid4()), "answer": final_answer}
         yield "data: " + json.dumps(final) + "\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
