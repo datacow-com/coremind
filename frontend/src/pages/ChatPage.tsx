@@ -235,6 +235,14 @@ const ChatPage: React.FC = () => {
     }
   }
 
+  const startNewChat = () => {
+    setMessages([])
+    setConversationId(null)
+    try {
+      localStorage.removeItem('omnirag_conversation_id')
+    } catch {}
+  }
+
   return (
     <div className="flex h-full">
       {/* Chat Area */}
@@ -244,6 +252,10 @@ const ChatPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-800">Chat with your documents</h2>
             <div className="flex items-center space-x-3">
+              <button
+                onClick={startNewChat}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
+              >New Chat</button>
               <select
                 value={selectedDocument || ''}
                 onChange={(e) => setSelectedDocument(e.target.value || null)}
