@@ -273,7 +273,20 @@ async def chat_stream(req: ChatRequest, request: Request):
         try:
             rs = await rerank_node({"retrieved_chunks": chunks})
             chunks_reranked = rs.get("retrieved_chunks") or chunks
-            yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "end", "count": len(chunks_reranked), "duration_ms": int((time.perf_counter() - t_rerank) * 1000)}) + "\n\n"
+            # average score
+            try:
+                scores = [float(c.get("rerank_score") or c.get("score") or 0.0) for c in chunks_reranked]
+                avg_score = (sum(scores) / max(len(scores), 1)) if scores else 0.0
+            except Exception:
+                avg_score = 0.0
+            yield "data: " + json.dumps({
+                "type": "phase",
+                "name": "rerank",
+                "status": "end",
+                "count": len(chunks_reranked),
+                "avg_score": avg_score,
+                "duration_ms": int((time.perf_counter() - t_rerank) * 1000)
+            }) + "\n\n"
             chunks = chunks_reranked
         except Exception:
             yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "error"}) + "\n\n"
@@ -324,11 +337,21 @@ async def chat_stream(req: ChatRequest, request: Request):
                 yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "fallback"}) + "\n\n"
             except Exception:
                 yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "error"}) + "\n\n"
-        yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "end", "duration_ms": int((time.perf_counter() - gen_start) * 1000), "gen_chars": total_chars, "gen_words": total_words}) + "\n\n"
+        gen_duration = max((time.perf_counter() - gen_start), 1e-6)
+        yield "data: " + json.dumps({
+            "type": "phase",
+            "name": "generate",
+            "status": "end",
+            "duration_ms": int(gen_duration * 1000),
+            "gen_chars": total_chars,
+            "gen_words": total_words,
+            "chars_per_sec": float(total_chars) / gen_duration,
+            "words_per_sec": float(total_words) / gen_duration,
+        }) + "\n\n"
         final = {"type": "final", "sources": sources, "conversation_id": req.conversation_id or str(uuid4()), "answer": final_answer}
         yield "data: " + json.dumps(final) + "\n\n"
 
-    return StreamingResponse(event_gen(), media_type="text/event-stream")
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={"Connection": "close"})
 
 
 @router.get("/vector-store/collections")
