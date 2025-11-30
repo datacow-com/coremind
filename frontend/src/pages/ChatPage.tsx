@@ -243,6 +243,12 @@ const ChatPage: React.FC = () => {
     } catch {}
   }
 
+  const clearPreview = () => {
+    setPdfPreview(null)
+    setPreviewImg(null)
+    setPreviewBBoxes([])
+  }
+
   return (
     <div className="flex h-full">
       {/* Chat Area */}
@@ -385,8 +391,9 @@ const ChatPage: React.FC = () => {
 
       {/* PDF Preview Panel */}
       <div className="w-96 bg-white border-l">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center justify-between">
           <h3 className="font-semibold text-gray-800">PDF Preview</h3>
+          <button onClick={clearPreview} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">Clear</button>
         </div>
         <div className="p-4">
           {pdfPreview ? (
