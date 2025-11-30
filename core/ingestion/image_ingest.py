@@ -14,8 +14,6 @@ class ImageIngestState(TypedDict):
 
 async def images_to_md(state: ImageIngestState) -> ImageIngestState:
     from core.llm.gateway import LLMGateway
-    from core.embedding.provider_embedder import Embedder
-    from core.storage.index_router import add as index_add
     import os
     gw = LLMGateway(provider=os.environ.get("VISION_PROVIDER", "dashscope"))
     prompt = "Extract structured Markdown with headings, lists, tables and preserve reading order."
@@ -30,6 +28,8 @@ async def images_to_md(state: ImageIngestState) -> ImageIngestState:
                 # write chunks to index
                 paras = [p.strip() for p in md.split("\n\n") if p.strip()]
                 emb = Embedder(dim=256)
+                from core.storage.keyword_index import get_keyword_index
+                kw = get_keyword_index()
                 for i, chunk in enumerate(paras):
                     vec = emb.embed(chunk)
                     meta = {
@@ -41,6 +41,7 @@ async def images_to_md(state: ImageIngestState) -> ImageIngestState:
                         "metadata": {"type": "image", "bbox": None, "confidence": 0.0},
                     }
                     index_add(vec, meta)
+                    kw.add(chunk, meta)
         except Exception:
             continue
     state["md"] = "\n\n".join(parts) if parts else (state.get("md") or "")

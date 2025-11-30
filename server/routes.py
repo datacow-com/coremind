@@ -373,6 +373,19 @@ async def set_thresholds(payload: dict):
         return {"ok": True, "thresholds": cfg}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@router.get("/alerts/thresholds")
+async def get_thresholds():
+    base = os.path.join(os.getcwd(), "data", "usage")
+    path = os.path.join(base, "thresholds.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            return {"ok": True, "thresholds": cfg}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    return {"ok": True, "thresholds": {}}
 @router.post("/ingest/pdf")
 async def ingest_pdf(file: UploadFile = File(...)):
     uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")

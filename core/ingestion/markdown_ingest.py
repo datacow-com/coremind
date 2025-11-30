@@ -23,9 +23,11 @@ async def read_or_pass(state: MarkdownIngestState) -> MarkdownIngestState:
     try:
         from core.embedding.provider_embedder import Embedder
         from core.storage.index_router import add as index_add
+        from core.storage.keyword_index import get_keyword_index
         md = state.get("md") or ""
         paras = [p.strip() for p in md.split("\n\n") if p.strip()]
         emb = Embedder(dim=256)
+        kw = get_keyword_index()
         for i, chunk in enumerate(paras):
             vec = emb.embed(chunk)
             meta = {
@@ -37,6 +39,7 @@ async def read_or_pass(state: MarkdownIngestState) -> MarkdownIngestState:
                 "metadata": {"type": "markdown", "bbox": None, "confidence": 0.0},
             }
             index_add(vec, meta)
+            kw.add(chunk, meta)
     except Exception:
         pass
     return state
