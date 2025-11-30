@@ -6,6 +6,7 @@ import DocumentsPage from './pages/DocumentsPage'
 import VectorStorePage from './pages/VectorStorePage'
 import SettingsPage from './pages/SettingsPage'
 import SystemStatusPage from './pages/SystemStatusPage'
+import UsageDashboard from './pages/UsageDashboard'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/vector-store" element={<VectorStorePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/status" element={<SystemStatusPage />} />
+          <Route path="/usage" element={<UsageDashboard />} />
         </Routes>
       </Layout>
     </Router>

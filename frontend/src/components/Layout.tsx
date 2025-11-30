@@ -15,6 +15,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Vector Store', href: '/vector-store', icon: Database },
     { name: 'Settings', href: '/settings', icon: Settings },
     { name: 'Status', href: '/status', icon: Activity },
+    { name: 'Usage', href: '/usage', icon: Activity },
   ]
 
   return (
