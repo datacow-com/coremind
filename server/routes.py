@@ -11,6 +11,9 @@ from core.ingestion.image_ingest import create_image_ingest_graph
 from core.ingestion.markdown_ingest import create_markdown_ingest_graph
 from core.ingestion.docx_ingest import create_docx_ingest_graph
 from core.ingestion.pptx_ingest import create_pptx_ingest_graph
+from core.ingestion.xlsx_ingest import create_xlsx_ingest_graph
+from core.ingestion.html_ingest import create_html_ingest_graph
+from core.ingestion.eml_ingest import create_eml_ingest_graph
 from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document, search as index_search, get_backends, list_collections_info
@@ -478,6 +481,58 @@ async def ingest_pptx(file: UploadFile = File(...)):
             f.write(content)
         app = create_pptx_ingest_graph()
         res = await app.ainvoke({"file_path": tmp_path, "md": None, "meta": {}}, config={"configurable": {"thread_id": "ingest-pptx"}})
+        return {"document_id": tmp_name, "md": res.get("md"), "md_path": (res.get("meta") or {}).get("md_path")}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.post("/ingest/xlsx")
+async def ingest_xlsx(file: UploadFile = File(...)):
+    uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    uploads_tmp = os.path.join(uploads_dir, "tmp")
+    os.makedirs(uploads_tmp, exist_ok=True)
+    try:
+        tmp_name = f"{uuid4()}_{file.filename}"
+        tmp_path = os.path.join(uploads_tmp, tmp_name)
+        content = await file.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        app = create_xlsx_ingest_graph()
+        res = await app.ainvoke({"file_path": tmp_path, "md": None, "meta": {}}, config={"configurable": {"thread_id": "ingest-xlsx"}})
+        return {"document_id": tmp_name, "md": res.get("md"), "md_path": (res.get("meta") or {}).get("md_path")}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.post("/ingest/html")
+async def ingest_html(file: UploadFile = File(...)):
+    uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    uploads_tmp = os.path.join(uploads_dir, "tmp")
+    os.makedirs(uploads_tmp, exist_ok=True)
+    try:
+        tmp_name = f"{uuid4()}_{file.filename}"
+        tmp_path = os.path.join(uploads_tmp, tmp_name)
+        content = await file.read()
+        text = content.decode("utf-8", errors="ignore")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(text)
+        app = create_html_ingest_graph()
+        res = await app.ainvoke({"file_path": tmp_path, "md": None, "meta": {}}, config={"configurable": {"thread_id": "ingest-html"}})
+        return {"document_id": tmp_name, "md": res.get("md"), "md_path": (res.get("meta") or {}).get("md_path")}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.post("/ingest/eml")
+async def ingest_eml(file: UploadFile = File(...)):
+    uploads_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    uploads_tmp = os.path.join(uploads_dir, "tmp")
+    os.makedirs(uploads_tmp, exist_ok=True)
+    try:
+        tmp_name = f"{uuid4()}_{file.filename}"
+        tmp_path = os.path.join(uploads_tmp, tmp_name)
+        content = await file.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        app = create_eml_ingest_graph()
+        res = await app.ainvoke({"file_path": tmp_path, "md": None, "meta": {}}, config={"configurable": {"thread_id": "ingest-eml"}})
         return {"document_id": tmp_name, "md": res.get("md"), "md_path": (res.get("meta") or {}).get("md_path")}
     except Exception as e:
         return {"status": "error", "message": str(e)}
