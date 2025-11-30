@@ -33,6 +33,7 @@ const ChatPage: React.FC = () => {
   const [previewImg, setPreviewImg] = useState<string | null>(null)
   const [previewBBoxes, setPreviewBBoxes] = useState<Array<{x:number,y:number,w:number,h:number}>>([])
   const [topK, setTopK] = useState<number>(5)
+  const [streaming, setStreaming] = useState<boolean>(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -117,45 +118,72 @@ const ChatPage: React.FC = () => {
     setIsLoading(true)
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: input,
-          conversation_id: conversationId,
-          document_ids: selectedDocument ? [selectedDocument] : undefined,
-          top_k: topK,
-          temperature: 0.7
+      if (streaming) {
+        const assistantMessage: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: '' }
+        setMessages(prev => [...prev, assistantMessage])
+        const response = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: input,
+            conversation_id: conversationId,
+            document_ids: selectedDocument ? [selectedDocument] : undefined,
+            top_k: topK,
+            temperature: 0.7
+          })
         })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to get response')
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
+        while (true) {
+          const r = await reader?.read()
+          if (!r || r.done) break
+          buf += decoder.decode(r.value, { stream: true })
+          const parts = buf.split('\n\n')
+          buf = parts.pop() || ''
+          for (const chunk of parts) {
+            const line = chunk.trim()
+            if (!line.startsWith('data:')) continue
+            const jsonStr = line.slice(5).trim()
+            try {
+              const evt = JSON.parse(jsonStr)
+              if (evt.type === 'answer' && evt.delta) {
+                setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: (m.content || '') + evt.delta } : m))
+              } else if (evt.type === 'final') {
+                setConversationId(evt.conversation_id)
+                try { if (evt.conversation_id) localStorage.setItem('omnirag_conversation_id', evt.conversation_id) } catch {}
+                if (evt.sources && evt.sources.length > 0) {
+                  const firstSource = evt.sources[0]
+                  await loadPreviewForSource(firstSource)
+                  setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, sources: evt.sources } : m))
+                }
+              }
+            } catch {}
+          }
+        }
+      } else {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: input,
+            conversation_id: conversationId,
+            document_ids: selectedDocument ? [selectedDocument] : undefined,
+            top_k: topK,
+            temperature: 0.7
+          })
+        })
+        if (!response.ok) throw new Error('Failed to get response')
+        const data = await response.json()
+        const assistantMessage: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: data.answer, sources: data.sources }
+        setMessages(prev => [...prev, assistantMessage])
+        setConversationId(data.conversation_id)
+        try { if (data.conversation_id) localStorage.setItem('omnirag_conversation_id', data.conversation_id) } catch {}
+        if (data.sources && data.sources.length > 0) {
+          const firstSource = data.sources[0]
+          await loadPreviewForSource(firstSource)
+        }
       }
-
-      const data = await response.json()
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.answer,
-        sources: data.sources
-      }
-
-      setMessages(prev => [...prev, assistantMessage])
-      setConversationId(data.conversation_id)
-      try {
-        if (data.conversation_id) localStorage.setItem('omnirag_conversation_id', data.conversation_id)
-      } catch {}
-      
-      // Auto preview first source
-      if (data.sources && data.sources.length > 0) {
-        const firstSource = data.sources[0]
-        await loadPreviewForSource(firstSource)
-      }
-      
     } catch (error) {
       console.error('Error sending message:', error)
       const errorMessage: Message = {
@@ -257,11 +285,11 @@ const ChatPage: React.FC = () => {
         <div className="bg-white border-b px-6 py-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-800">Chat with your documents</h2>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={startNewChat}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
-              >New Chat</button>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={startNewChat}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
+                >New Chat</button>
               <select
                 value={selectedDocument || ''}
                 onChange={(e) => setSelectedDocument(e.target.value || null)}
@@ -285,6 +313,11 @@ const ChatPage: React.FC = () => {
                   onChange={(e) => setTopK(Math.max(1, Math.min(10, parseInt(e.target.value || '5'))))}
                   className="w-16 border border-gray-300 rounded px-2 py-1"
                 />
+              </div>
+
+              <div className="flex items-center space-x-2 text-sm">
+                <label className="text-gray-600">Stream</label>
+                <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
               </div>
               
               <input

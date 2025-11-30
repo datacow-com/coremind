@@ -56,3 +56,47 @@ class LLMGateway:
                 pass
         # fallback
         return ""
+
+    async def stream_chat(self, prompt: str, context: Optional[str] = None):
+        p = self.provider.lower()
+        if p == "openai" and os.environ.get("OPENAI_API_KEY"):
+            try:
+                from openai import OpenAI
+                oa = OpenAI()
+                mdl = self.model or os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
+                stream = oa.chat.completions.create(
+                    model=mdl,
+                    messages=[{"role": "user", "content": content}],
+                    temperature=float(os.environ.get("CHAT_TEMPERATURE", "0.2")),
+                    stream=True,
+                )
+                for ev in stream:
+                    try:
+                        delta = ev.choices[0].delta.content
+                        if delta:
+                            yield delta
+                    except Exception:
+                        continue
+                return
+            except Exception:
+                pass
+        if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+                mdl = self.model or os.environ.get("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
+                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
+                model = genai.GenerativeModel(mdl)
+                resp = model.generate_content(content, stream=True)
+                for ch in resp:
+                    txt = getattr(ch, "text", "")
+                    if txt:
+                        yield txt
+                return
+            except Exception:
+                pass
+        # fallback: yield final answer once
+        ans = await self.chat(prompt=prompt, context=context)
+        if ans:
+            yield ans

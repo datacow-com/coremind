@@ -1,14 +1,18 @@
 import os
 from uuid import uuid4
 from fastapi import APIRouter, UploadFile, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from typing import List
+import json
 from core.graph import create_graph
 from server.schemas import UploadResponse, ChatRequest, ChatResponse, Source
 from core.nodes.ingest import ingest
 from core.storage.index_router import list_page_meta, doc_stats, delete_document, search as index_search, get_backends
 from core.storage.local_index import get_index
 from core.embedding.provider_embedder import Embedder
+from core.nodes.retrieve import retrieve as retrieve_node
+from core.state import RAGState
+from core.llm.gateway import LLMGateway
 from core.model_gateway.config_store import load_config, save_config, validate_provider, provider_category
 from server.auth import verify_token, create_token
 import base64
@@ -203,6 +207,43 @@ async def chat(req: ChatRequest):
     for s in raw_sources:
         sources.append(Source(**{k: s.get(k) for k in ["chunk_id", "content", "score", "document_name", "page_number"]}))
     return ChatResponse(answer=result.get("answer", ""), sources=sources, conversation_id=thread_id, message_id=str(uuid4()))
+
+
+@router.post("/chat/stream")
+async def chat_stream(req: ChatRequest):
+    uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
+    doc_paths = None
+    if req.document_ids:
+        doc_paths = [os.path.join(uploads_dir, f"{did}.pdf") for did in req.document_ids]
+    meta = {"top_k": int(req.top_k or 5), "doc_paths": doc_paths}
+
+    state: RAGState = {"query": req.query, "metadata": meta}
+    ret = await retrieve_node(state)  # reuse retrieve node
+    chunks = ret.get("retrieved_chunks") or []
+    context = "\n\n".join([c.get("content", "") for c in chunks])
+    sources = []
+    for c in chunks:
+        sources.append({
+            "chunk_id": c.get("id"),
+            "content": c.get("content"),
+            "score": c.get("score"),
+            "document_name": c.get("doc_id"),
+            "page_number": c.get("page_num"),
+        })
+
+    async def event_gen():
+        yield "data: " + json.dumps({"type": "retrieved", "count": len(chunks)}) + "\n\n"
+        gw = LLMGateway()
+        async for delta in gw.stream_chat(prompt=req.query, context=context):
+            try:
+                payload = {"type": "answer", "delta": delta}
+                yield "data: " + json.dumps(payload) + "\n\n"
+            except Exception:
+                continue
+        final = {"type": "final", "sources": sources, "conversation_id": req.conversation_id or str(uuid4())}
+        yield "data: " + json.dumps(final) + "\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @router.get("/vector-store/collections")
