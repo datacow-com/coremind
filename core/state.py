@@ -21,6 +21,8 @@ class Source(TypedDict):
 
 class RAGState(TypedDict, total=False):
     query: str
+    messages: List[Dict[str, Any]]
+    intent: Optional[str]
     documents: List[Dict[str, Any]]
     chunks: List[ProcessedChunk]
     vectors: List[List[float]]
@@ -29,8 +31,12 @@ class RAGState(TypedDict, total=False):
     context: str
     answer: str
     sources: List[Source]
+    web_results: List[Dict[str, Any]]
     web_search_needed: bool
+    relevance_score: float
+    hallucination_detected: bool
     hallucination_score: float
+    steps_taken: List[str]
     step: str
     error: Optional[str]
     metadata: Dict[str, Any]

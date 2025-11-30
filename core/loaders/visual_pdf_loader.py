@@ -10,6 +10,8 @@ class ParsingRule:
         force_vision: bool = False,
         table_threshold: int = 1,
         text_length_threshold: int = 400,
+        short_line_ratio_threshold: float = 0.6,
+        punct_ratio_threshold: float = 0.15,
         cache_enabled: bool = True,
         max_cache_entries: int = 16,
     ):
@@ -17,6 +19,8 @@ class ParsingRule:
         self.force_vision = force_vision
         self.table_threshold = table_threshold
         self.text_length_threshold = text_length_threshold
+        self.short_line_ratio_threshold = short_line_ratio_threshold
+        self.punct_ratio_threshold = punct_ratio_threshold
         self.cache_enabled = cache_enabled
         self.max_cache_entries = max_cache_entries
 
@@ -81,24 +85,16 @@ class VisualPDFLoader:
         return pages
 
     async def _extract_markdown(self, image_bytes: bytes, page_text: str, page_index: int, table_count: int) -> str:
-        api_key = os.environ.get("GEMINI_API_KEY")
         use_vision = self._should_use_vision(page_text, table_count)
-        if api_key and (not self.parsing_rule.prefer_ocr or self.parsing_rule.force_vision or use_vision):
+        if not self.parsing_rule.prefer_ocr or self.parsing_rule.force_vision or use_vision:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                from core.llm.gateway import LLMGateway
+                gw = LLMGateway()
                 prompt = (
                     "将此页面内容转换为结构化Markdown，保持标题层级、列表与表格结构。"
                     "若为表格，请尽可能准确还原，保留合并单元格信息。"
                 )
-                resp = model.generate_content([
-                    {"role": "user", "parts": [
-                        prompt,
-                        {"mime_type": "image/png", "data": image_bytes},
-                    ]}
-                ])
-                text = getattr(resp, "text", "").strip()
+                text = await gw.vision_markdown(image_bytes=image_bytes, prompt=prompt)
                 if text:
                     return text
             except Exception:
@@ -121,7 +117,17 @@ class VisualPDFLoader:
             return True
         if table_count >= self.parsing_rule.table_threshold:
             return True
-        if len(page_text or "") < self.parsing_rule.text_length_threshold:
+        txt = page_text or ""
+        if len(txt) < self.parsing_rule.text_length_threshold:
+            return True
+        lines = [l.strip() for l in txt.splitlines() if l.strip()]
+        short_lines = [l for l in lines if len(l) < 80]
+        short_ratio = (len(short_lines) / max(len(lines), 1)) if lines else 1.0
+        puncts = sum([1 for ch in txt if ch in ",.;:!?" ])
+        punct_ratio = (puncts / max(len(txt), 1)) if txt else 0.0
+        if short_ratio >= self.parsing_rule.short_line_ratio_threshold:
+            return True
+        if punct_ratio <= self.parsing_rule.punct_ratio_threshold:
             return True
         return False
 
@@ -167,22 +173,11 @@ class VisualPDFLoader:
         return regions
 
     async def _extract_table_markdown(self, crop_bytes: bytes) -> str:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if api_key and not self.parsing_rule.prefer_ocr:
+        if not self.parsing_rule.prefer_ocr:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                prompt = (
-                    "将此表格图片转换为Markdown表格，确保数值精确，保留合并单元格结构。"
-                )
-                resp = model.generate_content([
-                    {"role": "user", "parts": [
-                        prompt,
-                        {"mime_type": "image/png", "data": crop_bytes},
-                    ]}
-                ])
-                text = getattr(resp, "text", "").strip()
+                from core.llm.gateway import LLMGateway
+                gw = LLMGateway()
+                text = await gw.vision_table_markdown(image_bytes=crop_bytes)
                 if text:
                     return text
             except Exception:

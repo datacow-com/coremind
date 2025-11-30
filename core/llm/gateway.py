@@ -100,3 +100,26 @@ class LLMGateway:
         ans = await self.chat(prompt=prompt, context=context)
         if ans:
             yield ans
+
+    async def vision_markdown(self, image_bytes: bytes, prompt: str, model: Optional[str] = None) -> str:
+        p = self.provider.lower()
+        if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+                mdl = model or self.model or os.environ.get("GEMINI_VISION_MODEL", "gemini-1.5-flash")
+                gg = genai.GenerativeModel(mdl)
+                resp = gg.generate_content([
+                    {"role": "user", "parts": [
+                        prompt,
+                        {"mime_type": "image/png", "data": image_bytes},
+                    ]}
+                ])
+                return getattr(resp, "text", "").strip()
+            except Exception:
+                return ""
+        return ""
+
+    async def vision_table_markdown(self, image_bytes: bytes, model: Optional[str] = None) -> str:
+        prompt = "将此表格图片转换为Markdown表格，确保数值精确，保留合并单元格结构。"
+        return await self.vision_markdown(image_bytes=image_bytes, prompt=prompt, model=model)

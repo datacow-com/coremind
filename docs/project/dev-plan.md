@@ -725,3 +725,34 @@ graph TD
 **下次评审**: 2024-02-15
 **文档负责人**: 技术负责人
 **审批人**: 项目经理
+
+## 开发进度更新（截至 2025-11-30）
+
+- 流式编排与事件契约：`/chat/stream` 改为使用 LangGraph `astream`，SSE 事件标准化为 `metadata/thought/citation/message`，各节点返回 `metrics`（计时、数量、分数等）。
+- 检索与重排：上线 RRF 融合（k=60），接入 `BAAI/bge-reranker-v2-m3` 并启用低分过滤与 Top-K 截取。
+- 视觉解析与网关：VisualPDFLoader 统一走 ModelGateway 视觉接口；ParsingRule 触发策略细化（短行比例/标点密度等）。
+- 联网搜索与自我修正：DuckDuckGo Provider 工具化；`grade_documents` 与 `hallucination_check` 节点可用，输出一致性数值与阈值判定。
+- 基准验证：新增 `scripts/benchmark_rag.py` 验证 `astream` 与节点指标，便于 TTFT/阶段耗时采集。
+
+### 进度统计（映射 Backlog 特性）
+
+| 特性ID | 状态 | 说明 |
+|--------|------|------|
+| F-001 | 完成 | 视觉PDF加载器实现；视觉接口网关化，表格识别与 Markdown 输出 |
+| F-002 | 完成 | LangGraph 基础工作流；路由/检索/重排/生成/自检串联 |
+| F-003 | 完成 | 向量存储与检索；Milvus 集成与本地回退；RRF 融合上线 |
+| F-004 | 完成 | FastAPI 服务接口；上传/预览/SSE 流式；模型配置 API |
+| F-011 | 进行中 | 模型网关配置界面；后端 API 就绪，前端界面待开发 |
+| F-012 | 进行中 | 国外提供商适配：Gemini/OpenRouter 已连通；OpenAI/Anthropic 待配置 |
+| F-013 | 待启动 | 国内提供商适配：通义/Kimi/千帆/智谱/DeepSeek |
+| F-014 | 待启动 | 本地模型适配：Ollama |
+| F-015 | 进行中 | 多模态解析绑定：视觉接口已接入，分任务绑定待界面 |
+| F-016 | 进行中 | Embed/Rerank 绑定：Rerank 已接入；Embedding 维度与归一化待绑定 |
+| F-017 | 进行中 | 密钥与配额管理：API 与后端校验在建；UI 与审计待接 |
+
+### 下一步优先事项执行计划跟踪
+
+- 节点事件标准化与指标可视化：已完成节点返回 `metrics`，前端展示与联调进行中。
+- 模型网关配置与连接测试闭环：后端接口完成；前端页与分环境密钥/配额/审计落地中。
+- 视觉解析策略细化：已细化触发策略；后续增加版面复杂度得分与日志采集。
+- 端到端基准：基准脚本已添加；补充检索准确率与幻觉率评估脚本以对齐 KPI。

@@ -263,93 +263,42 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     async def event_gen():
         nonlocal chunks, context
-        # meta
         rid = getattr(request.state, "request_id", None)
-        yield "data: " + json.dumps({"type": "meta", "request_id": rid}) + "\n\n"
-        # phases
-        yield "data: " + json.dumps({"type": "phase", "name": "retrieve", "status": "end", "count": len(chunks), "duration_ms": dur_retrieve}) + "\n\n"
-        # rerank
-        t_rerank = time.perf_counter()
-        try:
-            rs = await rerank_node({"retrieved_chunks": chunks})
-            chunks_reranked = rs.get("retrieved_chunks") or chunks
-            # average score
-            try:
-                scores = [float(c.get("rerank_score") or c.get("score") or 0.0) for c in chunks_reranked]
-                avg_score = (sum(scores) / max(len(scores), 1)) if scores else 0.0
-            except Exception:
-                avg_score = 0.0
-            yield "data: " + json.dumps({
-                "type": "phase",
-                "name": "rerank",
-                "status": "end",
-                "count": len(chunks_reranked),
-                "avg_score": avg_score,
-                "duration_ms": int((time.perf_counter() - t_rerank) * 1000)
-            }) + "\n\n"
-            chunks = chunks_reranked
-        except Exception:
-            yield "data: " + json.dumps({"type": "phase", "name": "rerank", "status": "error"}) + "\n\n"
-        # grade
-        t_grade = time.perf_counter()
-        web_needed = False
-        try:
-            gs = await grade_node({"retrieved_chunks": chunks, "metadata": meta})
-            web_needed = bool(gs.get("web_search_needed"))
-            yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "end", "web_search_needed": web_needed, "duration_ms": int((time.perf_counter() - t_grade) * 1000)}) + "\n\n"
-        except Exception:
-            yield "data: " + json.dumps({"type": "phase", "name": "grade", "status": "error"}) + "\n\n"
-        # optional web_search
-        if web_needed:
-            t_ws = time.perf_counter()
-            try:
-                ws = await web_search_node({"query": req.query})
-                extra_ctx = ws.get("context") or ""
-                if extra_ctx:
-                    nonlocal context
-                    context = (context + "\n\n" + extra_ctx).strip()
-                yield "data: " + json.dumps({"type": "phase", "name": "web_search", "status": "end", "duration_ms": int((time.perf_counter() - t_ws) * 1000)}) + "\n\n"
-            except Exception:
-                yield "data: " + json.dumps({"type": "phase", "name": "web_search", "status": "error"}) + "\n\n"
-        # generate start
-        gen_start = time.perf_counter()
-        yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "start"}) + "\n\n"
-        total_chars = 0
-        total_words = 0
-        gw = LLMGateway()
+        yield "event: metadata\n" + "data: " + json.dumps({"request_id": rid}) + "\n\n"
+        rag_app = get_rag_app()
         final_answer = None
-        try:
-            async for delta in gw.stream_chat(prompt=req.query, context=context):
+        final_sources = []
+        async for update in rag_app.astream({"query": req.query, "metadata": meta}, config={"configurable": {"thread_id": req.conversation_id or str(uuid4())}}):
+            phase = update.get("step")
+            if phase:
+                payload = {"phase": phase, "status": "end"}
+                metrics = update.get("metrics") or {}
+                if metrics:
+                    payload["metrics"] = metrics
+                yield "event: thought\n" + "data: " + json.dumps(payload) + "\n\n"
+            if update.get("retrieved_chunks"):
+                chunks = update.get("retrieved_chunks") or []
                 try:
-                    payload = {"type": "answer", "delta": delta}
-                    yield "data: " + json.dumps(payload) + "\n\n"
-                    try:
-                        total_chars += len(delta)
-                        total_words += len(delta.split())
-                    except Exception:
-                        pass
+                    for c in (chunks or [])[:meta.get("top_k", 5)]:
+                        citation_payload = {
+                            "doc_id": c.get("doc_id"),
+                            "page": int(c.get("page_num") or 0),
+                            "bbox": (c.get("metadata") or {}).get("bbox"),
+                            "chunk_id": c.get("id"),
+                            "score": float(c.get("rerank_score") or c.get("score") or 0.0),
+                        }
+                        yield "event: citation\n" + "data: " + json.dumps(citation_payload) + "\n\n"
                 except Exception:
-                    continue
-        except Exception:
-            # fallback to non-stream
-            try:
-                final_answer = await gw.chat(prompt=req.query, context=context)
-                yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "fallback"}) + "\n\n"
-            except Exception:
-                yield "data: " + json.dumps({"type": "phase", "name": "generate", "status": "error"}) + "\n\n"
-        gen_duration = max((time.perf_counter() - gen_start), 1e-6)
-        yield "data: " + json.dumps({
-            "type": "phase",
-            "name": "generate",
-            "status": "end",
-            "duration_ms": int(gen_duration * 1000),
-            "gen_chars": total_chars,
-            "gen_words": total_words,
-            "chars_per_sec": float(total_chars) / gen_duration,
-            "words_per_sec": float(total_words) / gen_duration,
-        }) + "\n\n"
-        final = {"type": "final", "sources": sources, "conversation_id": req.conversation_id or str(uuid4()), "answer": final_answer}
-        yield "data: " + json.dumps(final) + "\n\n"
+                    pass
+            if update.get("context"):
+                context = update.get("context") or context
+            if update.get("sources"):
+                final_sources = update.get("sources") or final_sources
+            if update.get("answer"):
+                final_answer = update.get("answer")
+                yield "event: message\n" + "data: " + json.dumps({"delta": final_answer}) + "\n\n"
+        final = {"sources": sources or final_sources, "conversation_id": req.conversation_id or str(uuid4()), "answer": final_answer}
+        yield "event: message\n" + "data: " + json.dumps(final) + "\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream", headers={"Connection": "close"})
 
