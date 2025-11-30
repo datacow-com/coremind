@@ -30,6 +30,7 @@ class VisualPDFLoader:
         self.parsing_rule = parsing_rule or ParsingRule()
         self._page_cache: Dict[str, List[Tuple[bytes, str]]] = {}
         self._table_cache: Dict[str, List[Tuple[bytes, Tuple[int, int, int, int]]]] = {}
+        self._block_cache: Dict[str, List[Tuple[str, Tuple[int, int, int, int]]]] = {}
 
     async def process_pdf(self, pdf_path: str) -> List[ProcessedChunk]:
         pages = await self._pdf_pages(pdf_path)
@@ -57,15 +58,44 @@ class VisualPDFLoader:
                         })
 
             markdown = await self._extract_markdown(image_bytes, page_text, page_index, len(table_crops))
-            for i, chunk in enumerate(self._chunk_text(markdown)):
-                chunks.append({
-                    "id": f"{pdf_path}-p{page_index}-chunk-{i}",
-                    "content": chunk,
-                    "page_num": page_index,
-                    "doc_id": pdf_path,
-                    "chunk_index": i,
-                    "metadata": {"type": "visual", "confidence": 0.0, "bbox": (0, 0, w, h)},
-                })
+            used_vision = (not self.parsing_rule.prefer_ocr) or self.parsing_rule.force_vision or self._should_use_vision(page_text, len(table_crops))
+            if used_vision:
+                for i, chunk in enumerate(self._chunk_text(markdown)):
+                    chunks.append({
+                        "id": f"{pdf_path}-p{page_index}-chunk-{i}",
+                        "content": chunk,
+                        "page_num": page_index,
+                        "doc_id": pdf_path,
+                        "chunk_index": i,
+                        "metadata": {"type": "visual", "confidence": 0.0, "bbox": (0, 0, w, h)},
+                    })
+            else:
+                cache_key = f"{pdf_path}#p{page_index}"
+                blocks = self._block_cache.get(cache_key, [])
+                if not blocks:
+                    for i, chunk in enumerate(self._chunk_text(markdown)):
+                        chunks.append({
+                            "id": f"{pdf_path}-p{page_index}-chunk-{i}",
+                            "content": chunk,
+                            "page_num": page_index,
+                            "doc_id": pdf_path,
+                            "chunk_index": i,
+                            "metadata": {"type": "visual", "confidence": 0.0, "bbox": (0, 0, w, h)},
+                        })
+                else:
+                    for bi, (btxt, bbbox) in enumerate(blocks):
+                        line = btxt.strip()
+                        if not line:
+                            continue
+                        content = (f"## {line}" if len(line) < 80 else line)
+                        chunks.append({
+                            "id": f"{pdf_path}-p{page_index}-block-{bi}",
+                            "content": content,
+                            "page_num": page_index,
+                            "doc_id": pdf_path,
+                            "chunk_index": bi,
+                            "metadata": {"type": "visual", "confidence": 0.0, "bbox": bbbox},
+                        })
         return chunks
 
     async def _pdf_pages(self, pdf_path: str) -> List[Tuple[bytes, str]]:
@@ -79,11 +109,24 @@ class VisualPDFLoader:
 
         pages: List[Tuple[bytes, str]] = []
         doc = fitz.open(pdf_path)
-        for page in doc:
+        for i, page in enumerate(doc, start=1):
             pix = page.get_pixmap(alpha=False, matrix=fitz.Matrix(2, 2))
             image_bytes = pix.tobytes("png")
             page_text = page.get_text("text") or ""
             pages.append((image_bytes, page_text))
+            try:
+                blocks = page.get_text("blocks") or []
+                cache_key = f"{pdf_path}#p{i}"
+                blist: List[Tuple[str, Tuple[int, int, int, int]]] = []
+                for b in blocks:
+                    if isinstance(b, (list, tuple)) and len(b) >= 5:
+                        x0, y0, x1, y1 = int(b[0]), int(b[1]), int(b[2]), int(b[3])
+                        txt = str(b[4] or "").strip()
+                        if txt:
+                            blist.append((txt, (x0, y0, x1 - x0, y1 - y0)))
+                self._block_cache[cache_key] = blist
+            except Exception:
+                pass
         doc.close()
         if self.parsing_rule.cache_enabled:
             if len(self._page_cache) >= self.parsing_rule.max_cache_entries:
