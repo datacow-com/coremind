@@ -1,18 +1,22 @@
 import os
 import time
+
 import httpx
 import pytest
 
 BASE = os.getenv("E2E_BASE_URL", "http://localhost:3500")
 API = f"{BASE}/api"
 
+
 @pytest.fixture(scope="session")
 def base_url():
     return BASE
 
+
 @pytest.fixture(scope="session")
 def api_url():
     return API
+
 
 @pytest.fixture(scope="session")
 def wait_health(api_url):
@@ -26,6 +30,7 @@ def wait_health(api_url):
         time.sleep(1)
     raise RuntimeError("health timeout")
 
+
 @pytest.fixture(scope="session")
 def token(api_url, wait_health):
     r = httpx.post(f"{api_url}/auth/demo", timeout=10)
@@ -33,9 +38,11 @@ def token(api_url, wait_health):
     data = r.json()
     return data.get("access_token") or data.get("token")
 
+
 @pytest.fixture(scope="session")
 def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
+
 
 @pytest.fixture(scope="session")
 def provider_id(api_url, auth_headers):

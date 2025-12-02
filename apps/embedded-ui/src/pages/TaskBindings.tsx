@@ -41,7 +41,9 @@ export default function TaskBindings() {
   const loadProviders = useCallback(async () => {
     try {
       await getDemoToken();
-      const data = await apiGet<{ models: Provider[] }>("/models?page=1&page_size=200");
+      const data = await apiGet<{ models: Provider[] }>(
+        "/models?page=1&page_size=200",
+      );
       setProviders(data.models || []);
     } catch {
       /* noop */
@@ -64,7 +66,9 @@ export default function TaskBindings() {
     setError(null);
     try {
       await getDemoToken();
-      const data = await apiGet<BindingView[]>(`/models/bindings/${encodeURIComponent(queryTask)}/${queryEnv}`);
+      const data = await apiGet<BindingView[]>(
+        `/models/bindings/${encodeURIComponent(queryTask)}/${queryEnv}`,
+      );
       setBindings(data || []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -84,34 +88,80 @@ export default function TaskBindings() {
       <div className="border p-3 space-y-2">
         <div className="font-medium">创建绑定</div>
         <div className="grid grid-cols-3 gap-2">
-          <input value={form.task_id} onChange={(e) => setForm({ ...form, task_id: e.target.value })} placeholder="任务ID" className="border p-2" />
-          <input value={form.task_name} onChange={(e) => setForm({ ...form, task_name: e.target.value })} placeholder="任务名" className="border p-2" />
-          <select value={form.environment} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setForm({ ...form, environment: e.target.value as ("dev" | "test" | "prod") })} className="border p-2">
+          <input
+            value={form.task_id}
+            onChange={(e) => setForm({ ...form, task_id: e.target.value })}
+            placeholder="任务ID"
+            className="border p-2"
+          />
+          <input
+            value={form.task_name}
+            onChange={(e) => setForm({ ...form, task_name: e.target.value })}
+            placeholder="任务名"
+            className="border p-2"
+          />
+          <select
+            value={form.environment}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setForm({
+                ...form,
+                environment: e.target.value as "dev" | "test" | "prod",
+              })
+            }
+            className="border p-2"
+          >
             <option value="dev">dev</option>
             <option value="test">test</option>
             <option value="prod">prod</option>
           </select>
-          <select value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })} className="border p-2">
+          <select
+            value={form.model_id}
+            onChange={(e) => setForm({ ...form, model_id: e.target.value })}
+            className="border p-2"
+          >
             <option value="">选择模型</option>
             {providers.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
             ))}
           </select>
-          <input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} placeholder="优先级" className="border p-2" />
+          <input
+            type="number"
+            value={form.priority}
+            onChange={(e) =>
+              setForm({ ...form, priority: Number(e.target.value) })
+            }
+            placeholder="优先级"
+            className="border p-2"
+          />
         </div>
-        <button onClick={create} className="border px-4 py-2">创建</button>
+        <button onClick={create} className="border px-4 py-2">
+          创建
+        </button>
       </div>
 
       <div className="border p-3 space-y-2">
         <div className="font-medium">查询绑定</div>
         <div className="grid grid-cols-3 gap-2">
-          <input value={queryTask} onChange={(e) => setQueryTask(e.target.value)} placeholder="任务名" className="border p-2" />
-          <select value={queryEnv} onChange={(e) => setQueryEnv(e.target.value)} className="border p-2">
+          <input
+            value={queryTask}
+            onChange={(e) => setQueryTask(e.target.value)}
+            placeholder="任务名"
+            className="border p-2"
+          />
+          <select
+            value={queryEnv}
+            onChange={(e) => setQueryEnv(e.target.value)}
+            className="border p-2"
+          >
             <option value="dev">dev</option>
             <option value="test">test</option>
             <option value="prod">prod</option>
           </select>
-          <button onClick={query} className="border px-4 py-2">查询</button>
+          <button onClick={query} className="border px-4 py-2">
+            查询
+          </button>
         </div>
         {error && <div className="text-red-600">{error}</div>}
         {loading ? (

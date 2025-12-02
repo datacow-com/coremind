@@ -1,12 +1,20 @@
 import os
+from collections.abc import AsyncGenerator
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from typing import AsyncGenerator
+
 from .models import Base
 
 # Database configuration
-_RAW_DB_URL = os.getenv("DATABASE_URL", "postgresql://omnirag:omnirag_password@localhost:5432/omnirag")
-_ASYNC_DB_URL = _RAW_DB_URL if "+asyncpg" in _RAW_DB_URL else _RAW_DB_URL.replace("postgresql://", "postgresql+asyncpg://")
+_RAW_DB_URL = os.getenv(
+    "DATABASE_URL", "postgresql://omnirag:omnirag_password@localhost:5432/omnirag"
+)
+_ASYNC_DB_URL = (
+    _RAW_DB_URL
+    if "+asyncpg" in _RAW_DB_URL
+    else _RAW_DB_URL.replace("postgresql://", "postgresql+asyncpg://")
+)
 DATABASE_URL = _ASYNC_DB_URL
 
 # Create async engine

@@ -1,5 +1,6 @@
-import os
 import importlib.util
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,8 +26,19 @@ def test_runtime_config_has_keys():
     assert r.status_code == 200
     data = r.json()
     for k in [
-        "llm_provider","vision_provider","web_search_provider","chat_temperature",
-        "vector_weight","keyword_weight","top_k_default","rrf_k","reranker_filter_threshold",
-        "grade_threshold","hallucination_threshold","uploads_dir","milvus_uri","web_search_timeout"
+        "llm_provider",
+        "vision_provider",
+        "web_search_provider",
+        "chat_temperature",
+        "vector_weight",
+        "keyword_weight",
+        "top_k_default",
+        "rrf_k",
+        "reranker_filter_threshold",
+        "grade_threshold",
+        "hallucination_threshold",
+        "uploads_dir",
+        "milvus_uri",
+        "web_search_timeout",
     ]:
         assert k in data

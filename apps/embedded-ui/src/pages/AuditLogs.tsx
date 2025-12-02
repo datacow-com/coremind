@@ -31,7 +31,9 @@ export default function AuditLogs() {
     setError(null);
     try {
       await getDemoToken();
-      const data = await apiGet<Resp>(`/models/audit/logs?page=${page}&page_size=${pageSize}`);
+      const data = await apiGet<Resp>(
+        `/models/audit/logs?page=${page}&page_size=${pageSize}`,
+      );
       setLogs(data.logs || []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -64,21 +66,40 @@ export default function AuditLogs() {
           <tbody>
             {logs.map((l) => (
               <tr key={l.id}>
-                <td className="p-2 border">{new Date(l.created_at).toLocaleString()}</td>
-                <td className="p-2 border">{l.actor_name || l.actor_id || ""}</td>
+                <td className="p-2 border">
+                  {new Date(l.created_at).toLocaleString()}
+                </td>
+                <td className="p-2 border">
+                  {l.actor_name || l.actor_id || ""}
+                </td>
                 <td className="p-2 border">{l.action}</td>
                 <td className="p-2 border">{l.resource_type}</td>
-                <td className="p-2 border truncate max-w-[300px]">{typeof l.diff === "string" ? l.diff : JSON.stringify(l.diff || {})}</td>
+                <td className="p-2 border truncate max-w-[300px]">
+                  {typeof l.diff === "string"
+                    ? l.diff
+                    : JSON.stringify(l.diff || {})}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
       <div className="flex items-center gap-2">
-        <button onClick={() => setPage(Math.max(1, page - 1))} className="border px-3 py-1">上一页</button>
+        <button
+          onClick={() => setPage(Math.max(1, page - 1))}
+          className="border px-3 py-1"
+        >
+          上一页
+        </button>
         <div>{page}</div>
-        <button onClick={() => setPage(page + 1)} className="border px-3 py-1">下一页</button>
-        <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="border p-2">
+        <button onClick={() => setPage(page + 1)} className="border px-3 py-1">
+          下一页
+        </button>
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          className="border p-2"
+        >
           <option value={10}>10</option>
           <option value={20}>20</option>
           <option value={50}>50</option>

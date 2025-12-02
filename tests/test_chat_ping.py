@@ -1,5 +1,6 @@
-import os
 import importlib.util
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,11 +26,25 @@ def test_chat_stream_contains_ping(monkeypatch):
         async def stream_chat(self, prompt: str, context: str = None):
             for ch in ["x"]:
                 yield ch
+
         async def chat(self, prompt: str, context: str = None):
             return "x"
 
     async def dummy_retrieve(state):
-        return {"retrieved_chunks": [{"id": "x", "content": "c", "page_num": 1, "doc_id": "/tmp/a.pdf", "chunk_index": 0, "metadata": {}, "score": 0.9, "rerank_score": None}]}
+        return {
+            "retrieved_chunks": [
+                {
+                    "id": "x",
+                    "content": "c",
+                    "page_num": 1,
+                    "doc_id": "/tmp/a.pdf",
+                    "chunk_index": 0,
+                    "metadata": {},
+                    "score": 0.9,
+                    "rerank_score": None,
+                }
+            ]
+        }
 
     monkeypatch.setattr(routes_mod, "LLMGateway", lambda: DummyLLM())
     monkeypatch.setattr(routes_mod, "retrieve_node", lambda s: dummy_retrieve(s))

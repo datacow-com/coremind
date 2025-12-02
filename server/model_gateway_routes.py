@@ -1,20 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from typing import List, Optional
+import os
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .auth import authorize, get_current_user
 from .database import get_db
+from .schemas import (
+    AuditLogListResponse,
+    DashboardStats,
+    Environment,
+    ModelCategory,
+    ModelCreate,
+    ModelFilterParams,
+    ModelListResponse,
+    ModelResponse,
+    ModelStatus,
+    ModelTestRequest,
+    ModelTestResponse,
+    ModelUpdate,
+    ModelWithMetrics,
+    PaginationParams,
+    StackType,
+    TaskBindingCreate,
+    TaskBindingResponse,
+    TaskBindingWithModel,
+)
 from .services import ModelGatewayService
 from .supabase_service import SupabaseModelGatewayService
-import os
-from .schemas import (
-    ModelCreate, ModelUpdate, ModelResponse, ModelWithMetrics, ModelListResponse,
-    ModelTestRequest, ModelTestResponse, TaskBindingCreate, TaskBindingResponse,
-    TaskBindingWithModel, DashboardStats, AuditLogListResponse,
-    ModelFilterParams, PaginationParams, StackType, ModelCategory, ModelStatus, Environment
-)
-from .auth import get_current_user, authorize
- 
 
 router = APIRouter(prefix="/models", tags=["model-gateway"])
 
@@ -30,16 +43,14 @@ async def create_model(
     model_data: ModelCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Create a new model configuration"""
     authorize(current_user, roles=["system_admin", "config_admin"], permissions=["providers:write"])
     service = svc(db)
     try:
         model = await service.create_model(
-            model_data=model_data,
-            user_id=current_user["id"],
-            user_name=current_user["name"]
+            model_data=model_data, user_id=current_user["id"], user_name=current_user["name"]
         )
         return model
     except Exception as e:
@@ -48,28 +59,24 @@ async def create_model(
 
 @router.get("/", response_model=ModelListResponse)
 async def list_models(
-    stack: Optional[StackType] = Query(None, description="Filter by stack type"),
-    category: Optional[ModelCategory] = Query(None, description="Filter by category"),
-    environment: Optional[Environment] = Query(None, description="Filter by environment"),
-    status: Optional[ModelStatus] = Query(None, description="Filter by status"),
-    search: Optional[str] = Query(None, description="Search by name or endpoint"),
+    stack: StackType | None = Query(None, description="Filter by stack type"),
+    category: ModelCategory | None = Query(None, description="Filter by category"),
+    environment: Environment | None = Query(None, description="Filter by environment"),
+    status: ModelStatus | None = Query(None, description="Filter by status"),
+    search: str | None = Query(None, description="Search by name or endpoint"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Page size"),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """List models with filtering and pagination"""
     service = svc(db)
-    
+
     filters = ModelFilterParams(
-        stack=stack,
-        category=category,
-        environment=environment,
-        status=status,
-        search=search
+        stack=stack, category=category, environment=environment, status=status, search=search
     )
     pagination = PaginationParams(page=page, page_size=page_size)
-    
+
     try:
         return await service.list_models(filters, pagination)
     except Exception as e:
@@ -80,15 +87,15 @@ async def list_models(
 async def get_model(
     model_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Get model by ID with latest metrics"""
     service = svc(db)
-    
+
     model = await service.get_model(model_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    
+
     return model
 
 
@@ -98,7 +105,7 @@ async def update_model(
     model_data: ModelUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Update model configuration"""
     authorize(current_user, roles=["system_admin", "config_admin"], permissions=["providers:write"])
@@ -107,12 +114,12 @@ async def update_model(
         model_id=model_id,
         model_data=model_data,
         user_id=current_user["id"],
-        user_name=current_user["name"]
+        user_name=current_user["name"],
     )
-    
+
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    
+
     return model
 
 
@@ -121,20 +128,18 @@ async def delete_model(
     model_id: UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Delete model configuration"""
     authorize(current_user, roles=["system_admin", "config_admin"], permissions=["providers:write"])
     service = svc(db)
     success = await service.delete_model(
-        model_id=model_id,
-        user_id=current_user["id"],
-        user_name=current_user["name"]
+        model_id=model_id, user_id=current_user["id"], user_name=current_user["name"]
     )
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Model not found")
-    
+
     return {"message": "Model deleted successfully"}
 
 
@@ -143,7 +148,7 @@ async def test_model_connection(
     model_id: UUID,
     test_request: ModelTestRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Test model connection and performance"""
     authorize(current_user, roles=["system_admin", "config_admin"], permissions=["providers:write"])
@@ -160,7 +165,7 @@ async def create_task_binding(
     payload: dict,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Create task to model binding"""
     authorize(current_user, roles=["system_admin", "config_admin"], permissions=["bindings:write"])
@@ -178,9 +183,7 @@ async def create_task_binding(
             }
         binding_data = TaskBindingCreate(**data)
         binding = await service.create_task_binding(
-            binding_data=binding_data,
-            user_id=current_user["id"],
-            user_name=current_user["name"]
+            binding_data=binding_data, user_id=current_user["id"], user_name=current_user["name"]
         )
         return binding
     except ValueError as e:
@@ -189,12 +192,12 @@ async def create_task_binding(
         raise HTTPException(status_code=500, detail=f"Failed to create binding: {str(e)}")
 
 
-@router.get("/bindings/{task_id}/{environment}", response_model=List[TaskBindingWithModel])
+@router.get("/bindings/{task_id}/{environment}", response_model=list[TaskBindingWithModel])
 async def get_task_bindings(
     task_id: str,
     environment: Environment,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Get task bindings for a specific task and environment"""
     service = svc(db)
@@ -203,14 +206,19 @@ async def get_task_bindings(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get bindings: {str(e)}")
 
+
 # Credentials Routes
 @router.get("/{provider_id}/credentials")
 async def list_credentials(
     provider_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-    authorize(current_user, roles=["system_admin", "config_admin", "read_only"], permissions=["credentials:read"])
+    authorize(
+        current_user,
+        roles=["system_admin", "config_admin", "read_only"],
+        permissions=["credentials:read"],
+    )
     service = svc(db)
     try:
         return await service.list_credentials(str(provider_id))
@@ -224,12 +232,16 @@ async def upsert_credentials(
     env: Environment,
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-    authorize(current_user, roles=["system_admin", "config_admin"], permissions=["credentials:write"])
+    authorize(
+        current_user, roles=["system_admin", "config_admin"], permissions=["credentials:write"]
+    )
     service = svc(db)
     try:
-        return await service.upsert_credentials(str(provider_id), env.value, payload, current_user["id"], current_user["name"])
+        return await service.upsert_credentials(
+            str(provider_id), env.value, payload, current_user["id"], current_user["name"]
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upsert credentials: {str(e)}")
 
@@ -239,12 +251,16 @@ async def delete_credentials(
     provider_id: UUID,
     env: Environment,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
-    authorize(current_user, roles=["system_admin", "config_admin"], permissions=["credentials:write"])
+    authorize(
+        current_user, roles=["system_admin", "config_admin"], permissions=["credentials:write"]
+    )
     service = svc(db)
     try:
-        ok = await service.delete_credentials(str(provider_id), env.value, current_user["id"], current_user["name"])
+        ok = await service.delete_credentials(
+            str(provider_id), env.value, current_user["id"], current_user["name"]
+        )
         if not ok:
             raise HTTPException(status_code=404, detail="Credentials not found")
         return {"message": "deleted"}
@@ -255,12 +271,11 @@ async def delete_credentials(
 # Dashboard Routes
 @router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)
 ):
     """Get dashboard statistics"""
     service = ModelGatewayService(db)
-    
+
     try:
         return await service.get_dashboard_stats()
     except Exception as e:
@@ -270,31 +285,24 @@ async def get_dashboard_stats(
 # Audit Log Routes
 @router.get("/audit/logs", response_model=AuditLogListResponse)
 async def get_audit_logs(
-    user_id: Optional[UUID] = Query(None, description="Filter by user ID"),
-    resource_type: Optional[str] = Query(None, description="Filter by resource type"),
+    user_id: UUID | None = Query(None, description="Filter by user ID"),
+    resource_type: str | None = Query(None, description="Filter by resource type"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Page size"),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Get audit logs with filtering"""
     service = ModelGatewayService(db)
     pagination = PaginationParams(page=page, page_size=page_size)
-    
+
     try:
         logs = await service.get_audit_logs(
-            user_id=user_id,
-            resource_type=resource_type,
-            pagination=pagination
+            user_id=user_id, resource_type=resource_type, pagination=pagination
         )
-        
+
         total = len(logs)
-        return AuditLogListResponse(
-            logs=logs,
-            total=total,
-            page=page,
-            page_size=page_size
-        )
+        return AuditLogListResponse(logs=logs, total=total, page=page, page_size=page_size)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get audit logs: {str(e)}")
 
@@ -302,8 +310,7 @@ async def get_audit_logs(
 # Environment Versioning Routes
 @router.get("/environments")
 async def list_environments(
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)
 ):
     authorize(current_user, roles=["system_admin", "config_admin", "read_only"])
     service = ModelGatewayService(db)
@@ -313,9 +320,7 @@ async def list_environments(
 
 @router.get("/environments/{name}/versions")
 async def list_env_versions(
-    name: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    name: str, db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)
 ):
     authorize(current_user, roles=["system_admin", "config_admin", "read_only"])
     service = ModelGatewayService(db)
@@ -327,7 +332,7 @@ async def create_env_version(
     name: str,
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     authorize(current_user, roles=["system_admin", "config_admin"])
     service = ModelGatewayService(db)
@@ -339,7 +344,7 @@ async def rollback_env_version(
     name: str,
     version: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     authorize(current_user, roles=["system_admin", "config_admin"])
     service = ModelGatewayService(db)
@@ -355,7 +360,7 @@ async def apply_env_version(
     version: int,
     dry_run: bool = Query(True, description="Preview changes without applying"),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     authorize(current_user, roles=["system_admin", "config_admin"])
     service = ModelGatewayService(db)

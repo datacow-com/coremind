@@ -1,6 +1,6 @@
-import os
 import importlib.util
-from fastapi import FastAPI
+import os
+
 from fastapi.testclient import TestClient
 
 
@@ -23,6 +23,7 @@ client = TestClient(app)
 
 def test_rate_limit_returns_429(monkeypatch):
     from server import config as cfg
+
     monkeypatch.setattr(cfg.settings, "rate_limit_enabled", True)
     monkeypatch.setattr(cfg.settings, "rate_limit_per_minute", 1)
     r1 = client.get("/api/health")

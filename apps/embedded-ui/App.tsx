@@ -12,13 +12,27 @@ export default function App() {
     <Router>
       <div className="flex flex-col min-h-screen">
         <div className="border-b p-3 flex gap-4">
-          <a href="/" className="font-semibold">OmniRAG</a>
-          <a href="/providers" className="underline">Providers</a>
-          <a href="/bindings" className="underline">Bindings</a>
-          <a href="/credentials" className="underline">Credentials</a>
-          <a href="/environments" className="underline">Environments</a>
-          <a href="/dashboard" className="underline">Dashboard</a>
-          <a href="/audit" className="underline">Audit</a>
+          <a href="/" className="font-semibold">
+            OmniRAG
+          </a>
+          <a href="/providers" className="underline">
+            Providers
+          </a>
+          <a href="/bindings" className="underline">
+            Bindings
+          </a>
+          <a href="/credentials" className="underline">
+            Credentials
+          </a>
+          <a href="/environments" className="underline">
+            Environments
+          </a>
+          <a href="/dashboard" className="underline">
+            Dashboard
+          </a>
+          <a href="/audit" className="underline">
+            Audit
+          </a>
         </div>
         <div className="flex-1">
           <Routes>
@@ -29,7 +43,14 @@ export default function App() {
             <Route path="/environments" element={<Environments />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/audit" element={<AuditLogs />} />
-            <Route path="/other" element={<div className="text-center text-xl">Other Page - Coming Soon</div>} />
+            <Route
+              path="/other"
+              element={
+                <div className="text-center text-xl">
+                  Other Page - Coming Soon
+                </div>
+              }
+            />
           </Routes>
         </div>
       </div>

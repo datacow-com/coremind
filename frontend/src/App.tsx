@@ -1,12 +1,12 @@
 // no default React import needed with react-jsx
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import Layout from './components/Layout'
-import ChatPage from './pages/ChatPage'
-import DocumentsPage from './pages/DocumentsPage'
-import VectorStorePage from './pages/VectorStorePage'
-import SettingsPage from './pages/SettingsPage'
-import SystemStatusPage from './pages/SystemStatusPage'
-import UsageDashboard from './pages/UsageDashboard'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+import ChatPage from "./pages/ChatPage";
+import DocumentsPage from "./pages/DocumentsPage";
+import VectorStorePage from "./pages/VectorStorePage";
+import SettingsPage from "./pages/SettingsPage";
+import SystemStatusPage from "./pages/SystemStatusPage";
+import UsageDashboard from "./pages/UsageDashboard";
 
 function App() {
   return (
@@ -22,7 +22,7 @@ function App() {
         </Routes>
       </Layout>
     </Router>
-  )
+  );
 }
 
-export default App
+export default App;

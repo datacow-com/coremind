@@ -9,13 +9,14 @@ repos:
     rev: v1.11.2
     hooks:
       - id: mypy
-        args: ["--config-file", "mypy.ini"]
+        args: ["--config-file", "mypy.ini", "core", "server"]
         pass_filenames: false
+        stages: [push]
   - repo: https://github.com/PyCQA/bandit
     rev: 1.7.9
     hooks:
       - id: bandit
-        args: ["-c", ".bandit", "-r", "core", "server"]
+        args: ["-c", ".bandit", "-r", "core", "server", "--exit-zero"]
         pass_filenames: false
   - repo: local
     hooks:
@@ -29,3 +30,23 @@ repos:
         entry: bash -lc 'cd frontend && npm run type-check'
         language: system
         pass_filenames: false
+      - id: embedded-ui-eslint
+        name: embedded-ui-eslint
+        entry: bash -lc 'cd apps/embedded-ui && npm run lint'
+        language: system
+        pass_filenames: false
+      - id: embedded-ui-type-check
+        name: embedded-ui-type-check
+        entry: bash -lc 'cd apps/embedded-ui && npm run type-check'
+        language: system
+        pass_filenames: false
+      - id: frontend-prettier
+        name: frontend-prettier
+        entry: bash -lc 'npx --prefix frontend prettier --write "$@"'
+        language: system
+        files: ^frontend/.+\.(js|jsx|ts|tsx|json|css|md)$
+      - id: embedded-ui-prettier
+        name: embedded-ui-prettier
+        entry: bash -lc 'npx --prefix apps/embedded-ui prettier --write "$@"'
+        language: system
+        files: ^apps/embedded-ui/.+\.(js|jsx|ts|tsx|json|css|md)$

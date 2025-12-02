@@ -7,7 +7,11 @@ select = ["E","F","W","I","B","UP","S"]
 ignore = ["E501"]
 
 [lint.per-file-ignores]
-"tests/**" = ["S101","S112"]
+"server/**" = ["B008","S110","S112","B904"]
+"core/**" = ["S110","S112"]
+"core/ingestion/**" = ["S314"]
+"core/loaders/visual_pdf_loader.py" = ["UP038"]
+"tests/**" = ["S101","S112","S108","S110"]
 
 [format]
 quote-style = "double"

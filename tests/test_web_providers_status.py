@@ -1,5 +1,6 @@
-import os
 import importlib.util
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

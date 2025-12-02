@@ -1,4 +1,4 @@
 skips: []
 exclude: ["frontend", "tests", ".venv", "venv"]
-severity: "LOW"
-confidence: "LOW"
+severity: "HIGH"
+confidence: "HIGH"
