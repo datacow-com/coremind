@@ -1,8 +1,8 @@
 import asyncio
-import os
-import tempfile
 import base64
 import importlib.util
+import os
+import tempfile
 
 
 def _load_module(name: str, rel_path: str):
@@ -44,7 +44,7 @@ async def _make_pdf_at(path: str) -> None:
 def test_page_preview_endpoint_like():
     if not fitz:
         return
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory() as _td:
         uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
         os.makedirs(uploads_dir, exist_ok=True)
         doc_id = "test-doc"

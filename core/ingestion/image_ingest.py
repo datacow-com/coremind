@@ -1,23 +1,27 @@
 import os
-import base64
-from typing import List, Optional, Dict, Any
-from typing_extensions import TypedDict
-from langgraph.graph import StateGraph
+from typing import Any
+
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import StateGraph
+from typing_extensions import TypedDict
 
 
 class ImageIngestState(TypedDict):
-    file_paths: List[str]
-    md: Optional[str]
-    meta: Dict[str, Any]
+    file_paths: list[str]
+    md: str | None
+    meta: dict[str, Any]
 
 
 async def images_to_md(state: ImageIngestState) -> ImageIngestState:
-    from core.llm.gateway import LLMGateway
     import os
+
+    from core.embedding.provider_embedder import Embedder
+    from core.llm.gateway import LLMGateway
+    from core.storage.index_router import add as index_add
+
     gw = LLMGateway(provider=os.environ.get("VISION_PROVIDER", "dashscope"))
     prompt = "Extract structured Markdown with headings, lists, tables and preserve reading order."
-    parts: List[str] = []
+    parts: list[str] = []
     for fp in state.get("file_paths", []):
         try:
             with open(fp, "rb") as f:
@@ -29,6 +33,7 @@ async def images_to_md(state: ImageIngestState) -> ImageIngestState:
                 paras = [p.strip() for p in md.split("\n\n") if p.strip()]
                 emb = Embedder(dim=256)
                 from core.storage.keyword_index import get_keyword_index
+
                 kw = get_keyword_index()
                 for i, chunk in enumerate(paras):
                     vec = emb.embed(chunk)

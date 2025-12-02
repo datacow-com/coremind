@@ -3,7 +3,7 @@ import asyncio
 
 def test_execute_exports_tables():
     from core.nodes.execute import execute
-    from core.state import RetrievedChunk
+
     chunks = [
         {
             "id": "t1",
@@ -11,7 +11,7 @@ def test_execute_exports_tables():
             "page_num": 1,
             "doc_id": "doc.pdf",
             "chunk_index": 0,
-            "metadata": {"type": "table", "bbox": [0,0,10,10]},
+            "metadata": {"type": "table", "bbox": [0, 0, 10, 10]},
             "score": 0.9,
             "rerank_score": None,
         },

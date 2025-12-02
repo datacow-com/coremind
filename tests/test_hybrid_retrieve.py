@@ -1,5 +1,5 @@
 import asyncio
-from core.nodes.ingest import ingest
+
 from core.nodes.retrieve import retrieve
 
 
@@ -11,4 +11,3 @@ def test_hybrid_retrieve_combines_sources():
     res = loop.run_until_complete(retrieve({"query": "LangGraph parsing"}))
     assert "retrieved_chunks" in res
     assert isinstance(res["retrieved_chunks"], list)
-

@@ -1,34 +1,40 @@
 import os
 from html.parser import HTMLParser
-from typing import Optional, Dict, Any, List
-from typing_extensions import TypedDict
-from langgraph.graph import StateGraph
+from typing import Any
+
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import StateGraph
+from typing_extensions import TypedDict
+
+from server.config import settings
 
 
 class HtmlIngestState(TypedDict):
     file_path: str
-    md: Optional[str]
-    meta: Dict[str, Any]
+    md: str | None
+    meta: dict[str, Any]
 
 
 class _TextExtractor(HTMLParser):
     def __init__(self):
         super().__init__()
-        self.texts: List[str] = []
+        self.texts: list[str] = []
         self._skip = False
+
     def handle_starttag(self, tag, attrs):
         if tag in {"script", "style"}:
             self._skip = True
         if tag in {"h1", "h2", "h3"}:
-            self.texts.append(f"\n# ")
+            self.texts.append("\n# ")
         elif tag in {"li"}:
             self.texts.append("\n- ")
         elif tag in {"p"}:
             self.texts.append("\n\n")
+
     def handle_endtag(self, tag):
         if tag in {"script", "style"}:
             self._skip = False
+
     def handle_data(self, data):
         if not self._skip:
             s = (data or "").strip()
@@ -40,12 +46,12 @@ async def read_html_to_md(state: HtmlIngestState) -> HtmlIngestState:
     fp = state.get("file_path")
     md = ""
     try:
-        with open(fp, "r", encoding="utf-8", errors="ignore") as f:
+        with open(fp, encoding="utf-8", errors="ignore") as f:
             html = f.read()
         parser = _TextExtractor()
         parser.feed(html)
         txt = "".join(parser.texts)
-        lines = [l.strip() for l in txt.splitlines() if l.strip()]
+        lines = [line.strip() for line in txt.splitlines() if line.strip()]
         md = "\n".join(lines)
     except Exception:
         md = state.get("md") or ""
@@ -54,7 +60,7 @@ async def read_html_to_md(state: HtmlIngestState) -> HtmlIngestState:
 
 
 async def store_md(state: HtmlIngestState) -> HtmlIngestState:
-    base_dir = os.environ.get("UPLOADS_DIR", "/app/uploads")
+    base_dir = settings.uploads_dir_resolved
     out_dir = os.path.join(base_dir, "ingest")
     os.makedirs(out_dir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(state.get("file_path") or "page.html"))[0]
@@ -68,6 +74,7 @@ async def store_md(state: HtmlIngestState) -> HtmlIngestState:
         from core.embedding.provider_embedder import Embedder
         from core.storage.index_router import add as index_add
         from core.storage.keyword_index import get_keyword_index
+
         md_text = state.get("md") or ""
         paras = [p.strip() for p in md_text.split("\n\n") if p.strip()]
         emb = Embedder(dim=256)
@@ -97,4 +104,3 @@ def create_html_ingest_graph():
     g.add_edge("read_html_to_md", "store_md")
     memory = MemorySaver()
     return g.compile(checkpointer=memory)
-

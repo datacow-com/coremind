@@ -1,6 +1,6 @@
 import asyncio
-import os
 import importlib.util
+import os
 
 
 def _load_module(name: str, rel_path: str):
@@ -32,8 +32,15 @@ def test_model_gateway_get_and_test():
 def test_model_gateway_set():
     loop = asyncio.get_event_loop()
     payload = {
-        "bindings": {"parse": "gemini", "retrieve": "embedding", "chat": "openai", "rerank": "cross_encoder"},
-        "providers": [{"name": "openai", "model": "gpt-4o-mini", "base_url": "https://api.openai.com"}],
+        "bindings": {
+            "parse": "gemini",
+            "retrieve": "embedding",
+            "chat": "openai",
+            "rerank": "cross_encoder",
+        },
+        "providers": [
+            {"name": "openai", "model": "gpt-4o-mini", "base_url": "https://api.openai.com"}
+        ],
     }
     res = loop.run_until_complete(set_providers(payload))
     assert res["status"] == "ok"

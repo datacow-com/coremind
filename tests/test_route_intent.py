@@ -3,9 +3,10 @@ import asyncio
 
 def test_route_intent_classification():
     from core.nodes.route import route
-    from core.state import RAGState
+
     async def run(q):
         return await route({"query": q})
+
     res1 = asyncio.run(run("请总结一下这份报告"))
     res2 = asyncio.run(run("联网搜索一下最近的新闻"))
     res3 = asyncio.run(run("执行一个导出任务"))

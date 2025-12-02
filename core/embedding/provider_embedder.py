@@ -1,5 +1,5 @@
-from typing import List, Optional
 import os
+
 import numpy as np
 
 
@@ -20,7 +20,7 @@ def _reshape_to_dim(vec: np.ndarray, dim: int) -> np.ndarray:
 
 
 class Embedder:
-    def __init__(self, dim: int = 256, model_name: Optional[str] = None):
+    def __init__(self, dim: int = 256, model_name: str | None = None):
         self.dim = dim
         self.model_name = model_name or "sentence-transformers/all-MiniLM-L6-v2"
         self._st = None
@@ -28,6 +28,7 @@ class Embedder:
         if not self._openai_key:
             try:
                 from sentence_transformers import SentenceTransformer
+
                 self._st = SentenceTransformer(self.model_name)
             except Exception:
                 self._st = None
@@ -36,6 +37,7 @@ class Embedder:
         if self._openai_key:
             try:
                 import httpx
+
                 with httpx.Client(timeout=15.0) as client:
                     r = client.post(
                         "https://api.openai.com/v1/embeddings",
@@ -60,8 +62,8 @@ class Embedder:
             except Exception:
                 pass
         from core.embedding.simple_embedder import embed as simple
+
         return simple(text, dim=self.dim)
 
-    def embed_batch(self, texts: List[str]) -> np.ndarray:
+    def embed_batch(self, texts: list[str]) -> np.ndarray:
         return np.stack([self.embed(t) for t in texts], axis=0)
-

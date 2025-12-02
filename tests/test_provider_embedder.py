@@ -6,4 +6,3 @@ def test_provider_embedder_shape_and_type():
     v = emb.embed("hello world")
     assert v.shape == (256,)
     assert v.dtype.name == "float32"
-

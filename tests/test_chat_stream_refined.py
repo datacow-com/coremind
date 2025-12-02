@@ -1,10 +1,12 @@
-import os
 import importlib.util
+import os
+import sys
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
-from sse import parse_sse_text, find_event
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "utils"))
+from sse import find_event, parse_sse_text
 
 
 def _load_module(name: str, rel_path: str):
@@ -28,11 +30,25 @@ def test_stream_events_and_final(monkeypatch):
         async def stream_chat(self, prompt: str, context: str = None):
             for ch in ["a", "b", "c"]:
                 yield ch
+
         async def chat(self, prompt: str, context: str = None):
             return "abc"
 
     async def dummy_retrieve(state):
-        return {"retrieved_chunks": [{"id": "x", "content": "c", "page_num": 1, "doc_id": "/tmp/a.pdf", "chunk_index": 0, "metadata": {}, "score": 0.9, "rerank_score": None}]}
+        return {
+            "retrieved_chunks": [
+                {
+                    "id": "x",
+                    "content": "c",
+                    "page_num": 1,
+                    "doc_id": "/tmp/a.pdf",
+                    "chunk_index": 0,
+                    "metadata": {},
+                    "score": 0.9,
+                    "rerank_score": None,
+                }
+            ]
+        }
 
     monkeypatch.setattr(routes_mod, "LLMGateway", lambda: DummyLLM())
     monkeypatch.setattr(routes_mod, "retrieve_node", lambda s: dummy_retrieve(s))
@@ -40,6 +56,6 @@ def test_stream_events_and_final(monkeypatch):
     r = client.post("/api/chat/stream", json={"query": "hi", "top_k": 1})
     assert r.status_code == 200
     events = parse_sse_text(r.text)
-    assert find_event(events, 'phase') is not None
-    final = find_event(events, 'final')
+    assert find_event(events, "phase") is not None
+    final = find_event(events, "final")
     assert final is not None

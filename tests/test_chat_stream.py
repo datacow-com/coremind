@@ -1,5 +1,6 @@
-import os
 import importlib.util
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,11 +26,25 @@ def test_chat_stream_basic(monkeypatch):
         async def stream_chat(self, prompt: str, context: str = None):
             for ch in ["Hello ", "World"]:
                 yield ch
+
         async def chat(self, prompt: str, context: str = None):
             return "Hello World"
 
     async def dummy_retrieve(state):
-        return {"retrieved_chunks": [{"id": "x", "content": "c", "page_num": 1, "doc_id": "/tmp/a.pdf", "chunk_index": 0, "metadata": {}, "score": 0.9, "rerank_score": None}]}
+        return {
+            "retrieved_chunks": [
+                {
+                    "id": "x",
+                    "content": "c",
+                    "page_num": 1,
+                    "doc_id": "/tmp/a.pdf",
+                    "chunk_index": 0,
+                    "metadata": {},
+                    "score": 0.9,
+                    "rerank_score": None,
+                }
+            ]
+        }
 
     # patch LLM and retrieve node
     monkeypatch.setattr(routes_mod, "LLMGateway", lambda: DummyLLM())

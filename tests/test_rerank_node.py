@@ -1,4 +1,5 @@
 import asyncio
+
 from core.nodes.rerank import rerank
 
 
@@ -34,4 +35,3 @@ def test_rerank_orders_by_overlap_and_score():
     assert len(items) == 2
     assert items[0]["id"] in {"a", "b"}
     assert items[0]["rerank_score"] >= items[1]["rerank_score"]
-

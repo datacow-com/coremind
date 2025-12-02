@@ -1,4 +1,5 @@
 import asyncio
+
 from core.nodes.grade import grade
 
 
@@ -19,4 +20,3 @@ def test_grade_threshold_logic():
     loop = asyncio.get_event_loop()
     res = loop.run_until_complete(grade(state))
     assert res["web_search_needed"] is False
-

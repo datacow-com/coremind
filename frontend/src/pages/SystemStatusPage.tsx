@@ -13,11 +13,17 @@ type ProviderValidation = {
   configured: boolean
 }
 
+type WebProvidersStatus = {
+  current_provider: string
+  providers: Record<string, { configured: boolean }>
+}
+
 export default function SystemStatusPage() {
   const [health, setHealth] = useState<Health | null>(null)
   const [validations, setValidations] = useState<ProviderValidation[]>([])
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [webStatus, setWebStatus] = useState<WebProvidersStatus | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -40,6 +46,36 @@ export default function SystemStatusPage() {
       }
     } catch (e) {
       setError('Demo login failed')
+    }
+  }
+
+  const fetchWebProviders = async () => {
+    try {
+      const r = await fetch('/api/web/providers/status')
+      if (r.ok) {
+        setWebStatus(await r.json())
+      } else {
+        setError('Fetch web providers failed')
+      }
+    } catch (e) {
+      setError('Fetch web providers failed')
+    }
+  }
+
+  const selectWebProvider = async (name: string) => {
+    try {
+      const r = await fetch('/api/web/providers/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: name })
+      })
+      if (r.ok) {
+        await fetchWebProviders()
+      } else {
+        setError('Select provider failed')
+      }
+    } catch (e) {
+      setError('Select provider failed')
     }
   }
 
@@ -91,8 +127,19 @@ export default function SystemStatusPage() {
           <div className="space-x-2">
             <button onClick={demoLogin} className="px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300">Demo Login</button>
             <button onClick={fetchProviders} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Fetch Providers</button>
+            <button onClick={fetchWebProviders} className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">Web Providers</button>
           </div>
         </div>
+        {webStatus && (
+          <div className="mb-3 text-sm">
+            <div className="mb-1">Current Web Provider: <span className="font-medium">{webStatus.current_provider}</span></div>
+            <div className="space-x-2">
+              {Object.keys(webStatus.providers).map(name => (
+                <button key={name} onClick={() => selectWebProvider(name)} className={`px-2 py-1 text-xs rounded ${webStatus.providers[name].configured ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}`}>{name}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>

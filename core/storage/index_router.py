@@ -1,13 +1,11 @@
-from typing import Tuple, Optional
 from core.storage.local_index import get_index as get_local
 from core.storage.milvus_store import MilvusStore
-
 
 _MILVUS_CN: MilvusStore | None = None
 _MILVUS_EN: MilvusStore | None = None
 
 
-def get_backends() -> Tuple[MilvusStore, bool]:
+def get_backends() -> tuple[MilvusStore, bool]:
     global _MILVUS_CN, _MILVUS_EN
     if _MILVUS_CN is None:
         _MILVUS_CN = MilvusStore(dim=256, collection_name="omnirag_chunks_cn")
@@ -21,17 +19,17 @@ def get_backends() -> Tuple[MilvusStore, bool]:
     return (primary, ok)
 
 
-def _detect_lang(text: Optional[str]) -> str:
+def _detect_lang(text: str | None) -> str:
     t = (text or "").strip()
     if not t:
         return "en"
     # 简易中文检测：CJK字符占比
     total = len(t)
-    cjk = sum(1 for ch in t if '\u4e00' <= ch <= '\u9fff')
+    cjk = sum(1 for ch in t if "\u4e00" <= ch <= "\u9fff")
     return "cn" if (total and (cjk / total) >= 0.2) else "en"
 
 
-def _select_store_by_lang(lang: str) -> Optional[MilvusStore]:
+def _select_store_by_lang(lang: str) -> MilvusStore | None:
     global _MILVUS_CN, _MILVUS_EN
     if lang == "cn":
         return _MILVUS_CN if (_MILVUS_CN and _MILVUS_CN.available) else _MILVUS_EN
@@ -53,7 +51,7 @@ def add(vec, meta):
     idx.add(vec, meta)
 
 
-def search(qvec, top_k=5, lang_hint: Optional[str] = None):
+def search(qvec, top_k=5, lang_hint: str | None = None):
     # 根据查询语言提示选择集合
     lang = (lang_hint or "").lower()
     if lang not in ("cn", "en"):
@@ -102,20 +100,24 @@ def list_collections_info():
                 chunk_count = int(getattr(store.collection, "num_entities", 0))
             except Exception:
                 chunk_count = 0
-            infos.append({
-                "name": name,
-                "document_count": 0,
-                "chunk_count": chunk_count,
-                "embedding_dimension": store.dim,
-                "distance_metric": "COSINE",
-            })
+            infos.append(
+                {
+                    "name": name,
+                    "document_count": 0,
+                    "chunk_count": chunk_count,
+                    "embedding_dimension": store.dim,
+                    "distance_metric": "COSINE",
+                }
+            )
     if not infos:
         stats = get_local().stats_all()
-        infos.append({
-            "name": "local_index",
-            "document_count": stats.get("document_count", 0),
-            "chunk_count": stats.get("chunk_count", 0),
-            "embedding_dimension": stats.get("embedding_dimension", 256),
-            "distance_metric": "cosine",
-        })
+        infos.append(
+            {
+                "name": "local_index",
+                "document_count": stats.get("document_count", 0),
+                "chunk_count": stats.get("chunk_count", 0),
+                "embedding_dimension": stats.get("embedding_dimension", 256),
+                "distance_metric": "cosine",
+            }
+        )
     return infos

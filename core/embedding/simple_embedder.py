@@ -1,8 +1,7 @@
-from typing import List
 import numpy as np
 
 
-def _tokenize(text: str) -> List[str]:
+def _tokenize(text: str) -> list[str]:
     return [t for t in text.lower().split() if t]
 
 
@@ -16,6 +15,5 @@ def embed(text: str, dim: int = 256) -> np.ndarray:
     return vec / norm
 
 
-def embed_batch(texts: List[str], dim: int = 256) -> np.ndarray:
+def embed_batch(texts: list[str], dim: int = 256) -> np.ndarray:
     return np.stack([embed(t, dim=dim) for t in texts], axis=0)
-

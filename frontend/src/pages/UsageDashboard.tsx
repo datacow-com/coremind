@@ -6,6 +6,7 @@ interface UsageDay {
 
 export default function UsageDashboard() {
   const [usage, setUsage] = useState<Record<string, UsageDay>>({})
+  const [summary, setSummary] = useState<Record<string, {calls:number, tokens:number, duration_ms:number}>>({})
   const [thresholds, setThresholds] = useState<{max_tokens_per_day?: number, max_calls_per_day?: number, max_cost_per_day?: number, webhook_url?: string}>({})
   const [msg, setMsg] = useState('')
 
@@ -13,6 +14,7 @@ export default function UsageDashboard() {
     try {
       const u = await fetch('/api/metrics/usage').then(r => r.ok ? r.json() : Promise.reject('usage'))
       setUsage(u.usage || {})
+      setSummary(u.summary || {})
     } catch {}
     try {
       const t = await fetch('/api/alerts/thresholds').then(r => r.ok ? r.json() : Promise.reject('thresholds'))
@@ -45,6 +47,9 @@ export default function UsageDashboard() {
           {Object.entries(usage).map(([day, detail]) => (
             <div key={day} className="mb-4">
               <div className="font-medium">{day}</div>
+              {summary[day] && (
+                <div className="text-xs text-gray-600 mt-1">Summary: calls {summary[day].calls} · tokens {summary[day].tokens} · duration {summary[day].duration_ms} ms</div>
+              )}
               <table className="w-full text-sm mt-2">
                 <thead>
                   <tr className="text-left border-b"><th className="py-1">Provider:Model</th><th className="py-1">Calls</th><th className="py-1">Tokens In</th><th className="py-1">Tokens Out</th><th className="py-1">Duration (ms)</th></tr>
@@ -91,4 +96,3 @@ export default function UsageDashboard() {
     </div>
   )
 }
-

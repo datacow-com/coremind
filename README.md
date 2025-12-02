@@ -1,57 +1,24 @@
-# React + TypeScript + Vite
+# OmniRAG
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 配置集中化与运行说明
 
-Currently, two official plugins are available:
+- 使用 `.env`（参考 `.env.example`）配置：`APP_ENV`、`SECRET_KEY`、`MILVUS_URI|HOST|PORT`、`UPLOADS_DIR`、`USAGE_DIR`、`LLM_PROVIDER`、`VISION_PROVIDER`、`WEB_SEARCH_PROVIDER`、各 Provider API Key、告警阈值。
+- 运行时配置只读端点：`/api/config/runtime` 展示集中化配置；`/api/system/status` 展示健康与集合信息。
+- 用量与阈值：`/api/metrics/usage` 返回每日 `usage` 与聚合 `summary`；`/api/alerts/thresholds` 读写阈值（缺省值从 settings 读取）。
+- Web 搜索 Provider：`/api/web/providers/status` 查看当前与可用性；`POST /api/web/providers/select` 运行时切换（不持久化）。
+- 运行时设置更新：`POST /api/system/settings/update` 支持轻量运行时参数（如 `chat_temperature/vector_weight/keyword_weight`）。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 安全与健康
 
-## Expanding the ESLint configuration
+- 生产强制 `SECRET_KEY`；速率限制与心跳可通过 `settings.rate_limit_enabled/rate_limit_per_minute/sse_heartbeat_interval` 控制。
+- SSE 流包含 `event: ping` 心跳与阶段事件；返回 `429` 时前端给予轻提示。
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 开发与测试
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  extends: [
-    // other configs...
-    // Enable lint rules for React
-    reactX.configs['recommended-typescript'],
-    // Enable lint rules for React DOM
-    reactDom.configs.recommended,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+- 关键测试位于 `tests/*`，包括：路由意图、聊天流、摄取、向量集合、Web 搜索、告警阈值、心跳与限流。
+- GitHub Actions 在 `.github/workflows/ci.yml` 执行关键测试，保障持续集成。
+- 代码质量检查（pre-commit）：
+  - 安装开发依赖：`pip install -r requirements-dev.txt`
+  - 安装钩子：`pre-commit install`
+  - 手动运行：`pre-commit run --all-files`
+  - Python 使用 ruff/mypy/bandit；前端使用 `npm run lint` 与 `npm run type-check`。

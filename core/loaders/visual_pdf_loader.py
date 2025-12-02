@@ -1,6 +1,4 @@
-from typing import List, Optional, Tuple, Dict
 from core.state import ProcessedChunk
-import os
 
 
 class ParsingRule:
@@ -26,19 +24,21 @@ class ParsingRule:
 
 
 class VisualPDFLoader:
-    def __init__(self, parsing_rule: Optional[ParsingRule] = None):
+    def __init__(self, parsing_rule: ParsingRule | None = None):
         self.parsing_rule = parsing_rule or ParsingRule()
-        self._page_cache: Dict[str, List[Tuple[bytes, str]]] = {}
-        self._table_cache: Dict[str, List[Tuple[bytes, Tuple[int, int, int, int]]]] = {}
-        self._block_cache: Dict[str, List[Tuple[str, Tuple[int, int, int, int]]]] = {}
+        self._page_cache: dict[str, list[tuple[bytes, str]]] = {}
+        self._table_cache: dict[str, list[tuple[bytes, tuple[int, int, int, int]]]] = {}
+        self._block_cache: dict[str, list[tuple[str, tuple[int, int, int, int]]]] = {}
 
-    async def process_pdf(self, pdf_path: str) -> List[ProcessedChunk]:
+    async def process_pdf(self, pdf_path: str) -> list[ProcessedChunk]:
         pages = await self._pdf_pages(pdf_path)
-        chunks: List[ProcessedChunk] = []
+        chunks: list[ProcessedChunk] = []
         for page_index, (image_bytes, page_text) in enumerate(pages, start=1):
             try:
-                from PIL import Image
                 from io import BytesIO
+
+                from PIL import Image
+
                 im = Image.open(BytesIO(image_bytes))
                 w, h = im.size
             except Exception:
@@ -48,57 +48,75 @@ class VisualPDFLoader:
                 table_md = await self._extract_table_markdown(crop_bytes)
                 if table_md:
                     for j, c in enumerate(self._chunk_text(table_md)):
-                        chunks.append({
-                            "id": f"{pdf_path}-p{page_index}-table-{idx}-chunk-{j}",
-                            "content": c,
-                            "page_num": page_index,
-                            "doc_id": pdf_path,
-                            "chunk_index": j,
-                            "metadata": {"type": "table", "bbox": bbox, "confidence": 0.0},
-                        })
+                        chunks.append(
+                            {
+                                "id": f"{pdf_path}-p{page_index}-table-{idx}-chunk-{j}",
+                                "content": c,
+                                "page_num": page_index,
+                                "doc_id": pdf_path,
+                                "chunk_index": j,
+                                "metadata": {"type": "table", "bbox": bbox, "confidence": 0.0},
+                            }
+                        )
 
-            markdown = await self._extract_markdown(image_bytes, page_text, page_index, len(table_crops))
-            used_vision = (not self.parsing_rule.prefer_ocr) or self.parsing_rule.force_vision or self._should_use_vision(page_text, len(table_crops))
+            markdown = await self._extract_markdown(
+                image_bytes, page_text, page_index, len(table_crops)
+            )
+            used_vision = (
+                (not self.parsing_rule.prefer_ocr)
+                or self.parsing_rule.force_vision
+                or self._should_use_vision(page_text, len(table_crops))
+            )
             if used_vision:
                 for i, chunk in enumerate(self._chunk_text(markdown)):
-                    chunks.append({
-                        "id": f"{pdf_path}-p{page_index}-chunk-{i}",
-                        "content": chunk,
-                        "page_num": page_index,
-                        "doc_id": pdf_path,
-                        "chunk_index": i,
-                        "metadata": {"type": "visual", "confidence": 0.0, "bbox": (0, 0, w, h)},
-                    })
-            else:
-                cache_key = f"{pdf_path}#p{page_index}"
-                blocks = self._block_cache.get(cache_key, [])
-                if not blocks:
-                    for i, chunk in enumerate(self._chunk_text(markdown)):
-                        chunks.append({
+                    chunks.append(
+                        {
                             "id": f"{pdf_path}-p{page_index}-chunk-{i}",
                             "content": chunk,
                             "page_num": page_index,
                             "doc_id": pdf_path,
                             "chunk_index": i,
                             "metadata": {"type": "visual", "confidence": 0.0, "bbox": (0, 0, w, h)},
-                        })
+                        }
+                    )
+            else:
+                cache_key = f"{pdf_path}#p{page_index}"
+                blocks = self._block_cache.get(cache_key, [])
+                if not blocks:
+                    for i, chunk in enumerate(self._chunk_text(markdown)):
+                        chunks.append(
+                            {
+                                "id": f"{pdf_path}-p{page_index}-chunk-{i}",
+                                "content": chunk,
+                                "page_num": page_index,
+                                "doc_id": pdf_path,
+                                "chunk_index": i,
+                                "metadata": {
+                                    "type": "visual",
+                                    "confidence": 0.0,
+                                    "bbox": (0, 0, w, h),
+                                },
+                            }
+                        )
                 else:
                     for bi, (btxt, bbbox) in enumerate(blocks):
                         line = btxt.strip()
                         if not line:
                             continue
-                        content = (f"## {line}" if len(line) < 80 else line)
-                        chunks.append({
-                            "id": f"{pdf_path}-p{page_index}-block-{bi}",
-                            "content": content,
-                            "page_num": page_index,
-                            "doc_id": pdf_path,
-                            "chunk_index": bi,
-                            "metadata": {"type": "visual", "confidence": 0.0, "bbox": bbbox},
-                        })
+                        content = f"## {line}" if len(line) < 80 else line
+                        chunks.append(
+                            {
+                                "id": f"{pdf_path}-p{page_index}-block-{bi}",
+                                "content": content,
+                                "page_num": page_index,
+                                "doc_id": pdf_path,
+                                "chunk_index": bi,
+                                "metadata": {"type": "visual", "confidence": 0.0, "bbox": bbbox},
+                            }
+                        )
         return chunks
 
-    async def _pdf_pages(self, pdf_path: str) -> List[Tuple[bytes, str]]:
+    async def _pdf_pages(self, pdf_path: str) -> list[tuple[bytes, str]]:
         try:
             import fitz  # PyMuPDF
         except Exception:
@@ -107,7 +125,7 @@ class VisualPDFLoader:
         if self.parsing_rule.cache_enabled and pdf_path in self._page_cache:
             return self._page_cache[pdf_path]
 
-        pages: List[Tuple[bytes, str]] = []
+        pages: list[tuple[bytes, str]] = []
         doc = fitz.open(pdf_path)
         for i, page in enumerate(doc, start=1):
             pix = page.get_pixmap(alpha=False, matrix=fitz.Matrix(2, 2))
@@ -117,7 +135,7 @@ class VisualPDFLoader:
             try:
                 blocks = page.get_text("blocks") or []
                 cache_key = f"{pdf_path}#p{i}"
-                blist: List[Tuple[str, Tuple[int, int, int, int]]] = []
+                blist: list[tuple[str, tuple[int, int, int, int]]] = []
                 for b in blocks:
                     if isinstance(b, (list, tuple)) and len(b) >= 5:
                         x0, y0, x1, y1 = int(b[0]), int(b[1]), int(b[2]), int(b[3])
@@ -134,13 +152,16 @@ class VisualPDFLoader:
             self._page_cache[pdf_path] = pages
         return pages
 
-    async def _extract_markdown(self, image_bytes: bytes, page_text: str, page_index: int, table_count: int) -> str:
+    async def _extract_markdown(
+        self, image_bytes: bytes, page_text: str, page_index: int, table_count: int
+    ) -> str:
         use_vision = self._should_use_vision(page_text, table_count)
         if not self.parsing_rule.prefer_ocr or self.parsing_rule.force_vision or use_vision:
             try:
                 from core.llm.gateway import LLMGateway
-                import os
-                gw = LLMGateway(provider=os.environ.get("VISION_PROVIDER", "dashscope"))
+                from server.config import settings
+
+                gw = LLMGateway(provider=settings.vision_provider or "dashscope")
                 prompt = (
                     "将此页面内容转换为结构化Markdown，保持标题层级、列表与表格结构。"
                     "若为表格，请尽可能准确还原，保留合并单元格信息。"
@@ -152,7 +173,7 @@ class VisualPDFLoader:
                 pass
 
         # Fallback：使用页面文本简易转Markdown
-        md_lines: List[str] = [f"# Page {page_index}"]
+        md_lines: list[str] = [f"# Page {page_index}"]
         for line in (page_text or "").splitlines():
             line = line.strip()
             if not line:
@@ -171,10 +192,10 @@ class VisualPDFLoader:
         txt = page_text or ""
         if len(txt) < self.parsing_rule.text_length_threshold:
             return True
-        lines = [l.strip() for l in txt.splitlines() if l.strip()]
-        short_lines = [l for l in lines if len(l) < 80]
+        lines = [line.strip() for line in txt.splitlines() if line.strip()]
+        short_lines = [line for line in lines if len(line) < 80]
         short_ratio = (len(short_lines) / max(len(lines), 1)) if lines else 1.0
-        puncts = sum([1 for ch in txt if ch in ",.;:!?" ])
+        puncts = sum([1 for ch in txt if ch in ",.;:!?"])
         punct_ratio = (puncts / max(len(txt), 1)) if txt else 0.0
         if short_ratio >= self.parsing_rule.short_line_ratio_threshold:
             return True
@@ -182,7 +203,7 @@ class VisualPDFLoader:
             return True
         return False
 
-    def _detect_tables(self, image_bytes: bytes) -> List[Tuple[bytes, Tuple[int, int, int, int]]]:
+    def _detect_tables(self, image_bytes: bytes) -> list[tuple[bytes, tuple[int, int, int, int]]]:
         try:
             import cv2
             import numpy as np
@@ -192,14 +213,16 @@ class VisualPDFLoader:
         buf = np.frombuffer(image_bytes, dtype=np.uint8)
         img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        thr = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 15, 10)
+        thr = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 15, 10
+        )
         kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 1))
         kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 30))
         lines_h = cv2.morphologyEx(thr, cv2.MORPH_OPEN, kernel_h)
         lines_v = cv2.morphologyEx(thr, cv2.MORPH_OPEN, kernel_v)
         table_mask = cv2.add(lines_h, lines_v)
         contours, _ = cv2.findContours(table_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        regions: List[Tuple[bytes, Tuple[int, int, int, int]]] = []
+        regions: list[tuple[bytes, tuple[int, int, int, int]]] = []
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
             if w * h < 5000 or w < 50 or h < 50:
@@ -212,7 +235,9 @@ class VisualPDFLoader:
         regions.sort(key=lambda r: (r[1][1], r[1][0]))
         return regions
 
-    def _detect_tables_cached(self, pdf_path: str, page_index: int, image_bytes: bytes) -> List[Tuple[bytes, Tuple[int, int, int, int]]]:
+    def _detect_tables_cached(
+        self, pdf_path: str, page_index: int, image_bytes: bytes
+    ) -> list[tuple[bytes, tuple[int, int, int, int]]]:
         cache_key = f"{pdf_path}#p{page_index}"
         if self.parsing_rule.cache_enabled and cache_key in self._table_cache:
             return self._table_cache[cache_key]
@@ -227,8 +252,9 @@ class VisualPDFLoader:
         if not self.parsing_rule.prefer_ocr:
             try:
                 from core.llm.gateway import LLMGateway
-                import os
-                gw = LLMGateway(provider=os.environ.get("VISION_PROVIDER", "dashscope"))
+                from server.config import settings
+
+                gw = LLMGateway(provider=settings.vision_provider or "dashscope")
                 text = await gw.vision_table_markdown(image_bytes=crop_bytes)
                 if text:
                     return text
@@ -236,12 +262,12 @@ class VisualPDFLoader:
                 pass
         return ""
 
-    def _chunk_text(self, text: str) -> List[str]:
+    def _chunk_text(self, text: str) -> list[str]:
         if not text:
             return []
         paras = [p.strip() for p in text.split("\n\n") if p.strip()]
-        chunks: List[str] = []
-        buf: List[str] = []
+        chunks: list[str] = []
+        buf: list[str] = []
         target_min, target_max = 800, 1400
         for p in paras:
             if len("\n\n".join(buf)) < target_min:
@@ -255,7 +281,7 @@ class VisualPDFLoader:
         if buf:
             chunks.append("\n\n".join(buf))
         # 如果单个chunk过长，进行二次切分
-        out: List[str] = []
+        out: list[str] = []
         for c in chunks:
             if len(c) <= target_max:
                 out.append(c)

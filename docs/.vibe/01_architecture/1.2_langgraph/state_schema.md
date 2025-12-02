@@ -28,8 +28,8 @@ class AgentState(TypedDict):
     steps_taken: List[str] # e.g. ["router", "retrieve", "grade(fail)", "web_search"]
     current_retry_count: int
 
-State Transitions (Edges)
-router_node: Based on intent, route to rag_flow or web_flow.
-grader_node:
-If relevance_score > 0.7 -> generate_node.
-If relevance_score < 0.7 -> web_search_node.    
+    State Transitions (Edges)
+        router_node: Based on intent, route to rag_flow or web_flow.
+        grader_node:
+        If relevance_score > 0.7 -> generate_node.
+        If relevance_score < 0.7 -> web_search_node.    

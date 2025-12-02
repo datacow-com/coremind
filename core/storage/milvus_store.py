@@ -1,6 +1,7 @@
-from typing import Dict, Any, List, Tuple
-import numpy as np
 import os
+from typing import Any
+
+import numpy as np
 
 
 class MilvusStore:
@@ -12,7 +13,15 @@ class MilvusStore:
 
     def try_init(self) -> bool:
         try:
-            from pymilvus import Collection, CollectionSchema, FieldSchema, DataType, connections, utility
+            from pymilvus import (
+                Collection,
+                CollectionSchema,
+                DataType,
+                FieldSchema,
+                connections,
+                utility,
+            )
+
             uri = self._resolve_milvus_uri()
             connections.connect(alias="default", uri=uri)
 
@@ -32,7 +41,11 @@ class MilvusStore:
                 self.collection = Collection(self.collection_name)
             else:
                 self.collection = Collection(name=self.collection_name, schema=schema)
-                index_params = {"metric_type": "COSINE", "index_type": "IVF_FLAT", "params": {"nlist": 128}}
+                index_params = {
+                    "metric_type": "COSINE",
+                    "index_type": "IVF_FLAT",
+                    "params": {"nlist": 128},
+                }
                 if self.collection is not None:
                     self.collection.create_index("embedding", index_params)
 
@@ -46,6 +59,13 @@ class MilvusStore:
 
     @staticmethod
     def _resolve_milvus_uri() -> str:
+        try:
+            from server.config import settings
+
+            if settings.milvus_uri_resolved:
+                return settings.milvus_uri_resolved
+        except Exception:
+            pass
         uri = os.environ.get("MILVUS_URI")
         if uri:
             return uri
@@ -55,7 +75,7 @@ class MilvusStore:
             return f"http://{host}:{port}"
         return "http://localhost:19530"
 
-    def add(self, vec: np.ndarray, meta: Dict[str, Any]) -> None:
+    def add(self, vec: np.ndarray, meta: dict[str, Any]) -> None:
         if not self.available:
             raise RuntimeError("MilvusStore not available")
         if self.collection is None:
@@ -72,7 +92,7 @@ class MilvusStore:
         }
         self.collection.insert(data)
 
-    def search(self, query_vec: np.ndarray, top_k: int = 5) -> List[Tuple[Dict[str, Any], float]]:
+    def search(self, query_vec: np.ndarray, top_k: int = 5) -> list[tuple[dict[str, Any], float]]:
         if not self.available:
             return []
         if self.collection is None:
@@ -83,19 +103,31 @@ class MilvusStore:
             anns_field="embedding",
             param=search_params,
             limit=top_k,
-            output_fields=["chunk_id", "document_id", "content", "page_number", "chunk_index", "metadata"],
+            output_fields=[
+                "chunk_id",
+                "document_id",
+                "content",
+                "page_number",
+                "chunk_index",
+                "metadata",
+            ],
         )
-        out: List[Tuple[Dict[str, Any], float]] = []
+        out: list[tuple[dict[str, Any], float]] = []
         for hits in results:
             for hit in hits:
-                out.append(({
-                    "id": hit.entity.get("chunk_id"),
-                    "content": hit.entity.get("content"),
-                    "page_num": hit.entity.get("page_number"),
-                    "doc_id": hit.entity.get("document_id"),
-                    "chunk_index": hit.entity.get("chunk_index"),
-                    "metadata": hit.entity.get("metadata", {}),
-                }, float(hit.score)))
+                out.append(
+                    (
+                        {
+                            "id": hit.entity.get("chunk_id"),
+                            "content": hit.entity.get("content"),
+                            "page_num": hit.entity.get("page_number"),
+                            "doc_id": hit.entity.get("document_id"),
+                            "chunk_index": hit.entity.get("chunk_index"),
+                            "metadata": hit.entity.get("metadata", {}),
+                        },
+                        float(hit.score),
+                    )
+                )
         return out
 
     def delete_document(self, doc_id: str) -> int:

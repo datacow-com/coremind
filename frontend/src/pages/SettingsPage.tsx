@@ -57,7 +57,35 @@ const SettingsPage: React.FC = () => {
   const [vectorWeight, setVectorWeight] = useState<number>(0.6)
   const [keywordWeight, setKeywordWeight] = useState<number>(0.4)
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true)
+  const [defaultTopK, setDefaultTopK] = useState<number>(5)
+  const [rateLimitEnabled, setRateLimitEnabled] = useState<boolean>(false)
+  const [rateLimitPerMinute, setRateLimitPerMinute] = useState<number>(60)
+  const [heartbeatInterval, setHeartbeatInterval] = useState<number>(0)
   const [collections, setCollections] = useState<Array<{name:string, document_count:number, chunk_count:number, embedding_dimension:number, distance_metric:string}>>([])
+  const [runtime, setRuntime] = useState<Record<string, any>>({})
+  const [usageSummary, setUsageSummary] = useState<Record<string, {calls:number, tokens:number, duration_ms:number}>>({})
+  const [webProvidersStatus, setWebProvidersStatus] = useState<{current_provider:string, providers:Record<string,{configured:boolean}>}|null>(null)
+
+  const fetchRuntime = async () => {
+    try {
+      const r = await fetch('/api/config/runtime')
+      if (r.ok) {
+        const d = await r.json()
+        setRuntime(d)
+        if (typeof d.top_k_default === 'number') setDefaultTopK(d.top_k_default)
+        if (typeof d.rate_limit_enabled === 'boolean') setRateLimitEnabled(d.rate_limit_enabled)
+        if (typeof d.rate_limit_per_minute === 'number') setRateLimitPerMinute(d.rate_limit_per_minute)
+        if (typeof d.sse_heartbeat_interval === 'number') setHeartbeatInterval(d.sse_heartbeat_interval)
+      }
+    } catch {}
+  }
+
+  const fetchWebProviders = async () => {
+    try {
+      const r = await fetch('/api/web/providers/status')
+      if (r.ok) setWebProvidersStatus(await r.json())
+    } catch {}
+  }
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -96,6 +124,18 @@ const SettingsPage: React.FC = () => {
       }
     }
     loadProviders()
+    fetchRuntime()
+    const loadUsage = async () => {
+      try {
+        const r = await fetch('/api/metrics/usage')
+        if (r.ok) {
+          const d = await r.json()
+          setUsageSummary(d.summary || {})
+        }
+      } catch {}
+    }
+    loadUsage()
+    fetchWebProviders()
   }, [])
 
   const handleSave = async () => {
@@ -129,6 +169,39 @@ const SettingsPage: React.FC = () => {
       setTimeout(() => setSaveMessage(''), 3000)
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const applyRuntime = async () => {
+    try {
+      const res = await fetch('/api/system/settings/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_temperature: settings.llm.temperature,
+          vector_weight: vectorWeight,
+          keyword_weight: keywordWeight,
+          top_k_default: defaultTopK,
+          rate_limit_enabled: rateLimitEnabled,
+          rate_limit_per_minute: rateLimitPerMinute,
+          sse_heartbeat_interval: heartbeatInterval,
+        })
+      })
+      if (res.ok) {
+        try {
+          window.dispatchEvent(new CustomEvent('settings:update', { detail: { vector_weight: vectorWeight, keyword_weight: keywordWeight } }))
+        } catch {}
+        setSaveMessage('Runtime applied')
+        await fetchRuntime()
+        await fetchWebProviders()
+        setTimeout(() => setSaveMessage(''), 2000)
+      } else {
+        setSaveMessage('Runtime apply failed')
+        setTimeout(() => setSaveMessage(''), 2000)
+      }
+    } catch {
+      setSaveMessage('Runtime apply failed')
+      setTimeout(() => setSaveMessage(''), 2000)
     }
   }
 
@@ -210,7 +283,7 @@ const SettingsPage: React.FC = () => {
         <div className="mb-8">
           <div className="flex items-center space-x-2 mb-4">
             <Key className="h-5 w-5 text-blue-600" />
-            <h3 className="text-md font-medium text-gray-900">LLM Configuration</h3>
+          <h3 className="text-md font-medium text-gray-900">LLM Configuration</h3>
           </div>
 
           <div className="bg-white border rounded-lg p-6 space-y-4">
@@ -333,9 +406,17 @@ const SettingsPage: React.FC = () => {
                   onChange={(e) => updateLLMSetting('max_tokens', parseInt(e.target.value))}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-              </div>
-            </div>
           </div>
+          {Object.keys(runtime).length > 0 && (
+            <div className="mt-4 text-xs text-gray-600">
+              <div>Runtime: provider {runtime.llm_provider} · vision {runtime.vision_provider} · web {runtime.web_search_provider}</div>
+              <div>Temp {runtime.chat_temperature} · top_k {runtime.top_k_default} · rrf_k {runtime.rrf_k}</div>
+              <div>Uploads {runtime.uploads_dir} · Usage {runtime.usage_dir} · Milvus {runtime.milvus_uri} · Web timeout {runtime.web_search_timeout}</div>
+              {Object.keys(usageSummary).length > 0 && (() => { const days = Object.keys(usageSummary).sort(); const today = days[days.length-1]; const s = usageSummary[today]; return s ? (<div>Today: calls {s.calls} · tokens {s.tokens} · duration {s.duration_ms} ms</div>) : null })()}
+            </div>
+          )}
+          </div>
+        </div>
         </div>
 
         {/* Retrieval Settings */}
@@ -355,11 +436,27 @@ const SettingsPage: React.FC = () => {
                 <input type="number" min={0} max={1} step={0.1} value={keywordWeight} onChange={(e)=>setKeywordWeight(Math.max(0, Math.min(1, parseFloat(e.target.value||'0.4'))))} className="w-20 border rounded px-2 py-1" />
               </div>
               <div className="flex items-center space-x-2">
-                <label className="text-sm text-gray-700">Web Search</label>
-                <input type="checkbox" checked={webSearchEnabled} onChange={(e)=>setWebSearchEnabled(e.target.checked)} />
+                <label className="text-sm text-gray-700">Default Top-K</label>
+                <input type="number" min={1} max={10} value={defaultTopK} onChange={(e)=>setDefaultTopK(Math.max(1, Math.min(10, parseInt(e.target.value||'5'))))} className="w-20 border rounded px-2 py-1" />
               </div>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-gray-700">Web Search</label>
+              <input type="checkbox" checked={webSearchEnabled} onChange={(e)=>setWebSearchEnabled(e.target.checked)} />
+            </div>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-gray-700">Rate Limit</label>
+              <input type="checkbox" checked={rateLimitEnabled} onChange={(e)=>setRateLimitEnabled(e.target.checked)} />
+              <input type="number" min={1} max={600} value={rateLimitPerMinute} onChange={(e)=>setRateLimitPerMinute(Math.max(1, Math.min(600, parseInt(e.target.value||'60'))))} className="w-24 border rounded px-2 py-1" />
+            </div>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-gray-700">Heartbeat (s)</label>
+              <input type="number" min={0} max={120} value={heartbeatInterval} onChange={(e)=>setHeartbeatInterval(Math.max(0, Math.min(120, parseInt(e.target.value||'0'))))} className="w-24 border rounded px-2 py-1" />
+            </div>
             </div>
             <p className="text-xs text-gray-500">这些设置将作为默认值用于聊天检索流程，可在聊天页覆盖。</p>
+            <div>
+              <button onClick={applyRuntime} className="mt-2 px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">Apply Runtime</button>
+            </div>
           </div>
         </div>
 
@@ -532,6 +629,16 @@ const SettingsPage: React.FC = () => {
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            {webProvidersStatus && (
+              <div className="text-xs text-gray-600">
+                <div className="mb-1">Current Provider: <span className="font-medium">{webProvidersStatus.current_provider}</span></div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.keys(webProvidersStatus.providers).map(name => (
+                    <span key={name} className={`px-2 py-1 rounded ${webProvidersStatus.providers[name].configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{name}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,19 +1,33 @@
-from typing import Optional
+import json
 import os
+
+from server.config import settings
 
 
 class LLMGateway:
-    def __init__(self, provider: Optional[str] = None, model: Optional[str] = None):
-        self.provider = provider or os.environ.get("LLM_PROVIDER", "gemini")
+    def __init__(self, provider: str | None = None, model: str | None = None):
+        self.provider = provider or (settings.llm_provider or "gemini")
         self.model = model
 
     def _usage_dir(self) -> str:
-        base = os.path.join(os.getcwd(), "data", "usage")
+        base = getattr(settings, "usage_dir_resolved", os.path.join(os.getcwd(), "data", "usage"))
         os.makedirs(base, exist_ok=True)
         return base
 
-    def _record_usage(self, kind: str, provider: str, model: str, tokens_in: int, tokens_out: int, duration_ms: int) -> None:
-        import json, time, httpx
+    def _record_usage(
+        self,
+        kind: str,
+        provider: str,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        duration_ms: int,
+    ) -> None:
+        import json
+        import time
+
+        import httpx
+
         path = os.path.join(self._usage_dir(), "usage.jsonl")
         rec = {
             "ts": int(time.time()),
@@ -29,79 +43,110 @@ class LLMGateway:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except Exception:
             pass
-        # Threshold check and webhook
+        # Threshold check and webhook (file-based fallback, settings override)
         try:
             th_path = os.path.join(self._usage_dir(), "thresholds.json")
+            th = None
             if os.path.exists(th_path):
-                with open(th_path, "r", encoding="utf-8") as tf:
+                with open(th_path, encoding="utf-8") as tf:
                     th = json.load(tf)
-                # Simple daily aggregation in-memory
-                day = time.strftime("%Y-%m-%d", time.gmtime(rec["ts"]))
-                agg_tokens = 0
-                agg_calls = 0
-                agg_cost = 0.0
+            else:
+                th = {
+                    "max_tokens_per_day": int(getattr(settings, "max_tokens_per_day", 0) or 0),
+                    "max_calls_per_day": int(getattr(settings, "max_calls_per_day", 0) or 0),
+                    "max_cost_per_day": float(getattr(settings, "max_cost_per_day", 0.0) or 0.0),
+                    "webhook_url": getattr(
+                        settings, "alert_webhook_url", os.environ.get("ALERT_WEBHOOK_URL")
+                    ),
+                }
+
+            day = time.strftime("%Y-%m-%d", time.gmtime(rec["ts"]))
+            agg_tokens = 0
+            agg_calls = 0
+            agg_cost = 0.0
+            try:
+                with open(path, encoding="utf-8") as rf:
+                    for line in rf:
+                        try:
+                            x = json.loads(line.strip())
+                            d = time.strftime("%Y-%m-%d", time.gmtime(x.get("ts", rec["ts"])))
+                            if d == day:
+                                agg_calls += 1
+                                agg_tokens += int(x.get("tokens_in") or 0) + int(
+                                    x.get("tokens_out") or 0
+                                )
+                                prov = (x.get("provider") or "").lower()
+                                cpk = (
+                                    float(os.environ.get("COST_PER_1K_TOKENS_DASHSCOPE", "0"))
+                                    if prov == "dashscope"
+                                    else float(os.environ.get("COST_PER_1K_TOKENS_ARK", "0"))
+                                    if prov in {"ark", "volcengine"}
+                                    else float(os.environ.get("COST_PER_1K_TOKENS_OPENAI", "0"))
+                                    if prov == "openai"
+                                    else float(os.environ.get("COST_PER_1K_TOKENS_GEMINI", "0"))
+                                    if prov == "gemini"
+                                    else float(os.environ.get("COST_PER_1K_TOKENS_OLLAMA", "0"))
+                                    if prov == "ollama"
+                                    else float(os.environ.get("USAGE_COST_PER_1K_TOKENS", "0"))
+                                )
+                                agg_cost += (
+                                    (int(x.get("tokens_in") or 0) + int(x.get("tokens_out") or 0))
+                                    / 1000.0
+                                ) * cpk
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+            exceed = (
+                (
+                    int(th.get("max_tokens_per_day") or 0)
+                    and agg_tokens >= int(th.get("max_tokens_per_day") or 0)
+                )
+                or (
+                    int(th.get("max_calls_per_day") or 0)
+                    and agg_calls >= int(th.get("max_calls_per_day") or 0)
+                )
+                or (
+                    float(th.get("max_cost_per_day") or 0.0)
+                    and agg_cost >= float(th.get("max_cost_per_day") or 0.0)
+                )
+            )
+            webhook = th.get("webhook_url")
+            if exceed and webhook:
+                payload = {
+                    "day": day,
+                    "calls": agg_calls,
+                    "tokens": agg_tokens,
+                    "cost": round(agg_cost, 6),
+                    "provider": provider,
+                    "model": model,
+                    "kind": kind,
+                    "msg": "Threshold exceeded",
+                }
                 try:
-                    with open(path, "r", encoding="utf-8") as rf:
-                        for line in rf:
-                            try:
-                                x = json.loads(line.strip())
-                                d = time.strftime("%Y-%m-%d", time.gmtime(x.get("ts", rec["ts"])))
-                                if d == day:
-                                    agg_calls += 1
-                                    agg_tokens += int(x.get("tokens_in") or 0) + int(x.get("tokens_out") or 0)
-                                    prov = (x.get("provider") or "").lower()
-                                    cpk = (
-                                        float(os.environ.get("COST_PER_1K_TOKENS_DASHSCOPE", "0")) if prov == "dashscope" else
-                                        float(os.environ.get("COST_PER_1K_TOKENS_ARK", "0")) if prov in {"ark", "volcengine"} else
-                                        float(os.environ.get("COST_PER_1K_TOKENS_OPENAI", "0")) if prov == "openai" else
-                                        float(os.environ.get("COST_PER_1K_TOKENS_GEMINI", "0")) if prov == "gemini" else
-                                        float(os.environ.get("COST_PER_1K_TOKENS_OLLAMA", "0")) if prov == "ollama" else
-                                        float(os.environ.get("USAGE_COST_PER_1K_TOKENS", "0"))
-                                    )
-                                    agg_cost += ( (int(x.get("tokens_in") or 0) + int(x.get("tokens_out") or 0)) / 1000.0 ) * cpk
-                            except Exception:
-                                continue
+                    with httpx.Client(timeout=5.0) as http:
+                        http.post(webhook, json=payload)
                 except Exception:
                     pass
-                exceed = (
-                    (int(th.get("max_tokens_per_day") or 0) and agg_tokens >= int(th.get("max_tokens_per_day") or 0))
-                    or (int(th.get("max_calls_per_day") or 0) and agg_calls >= int(th.get("max_calls_per_day") or 0))
-                    or (float(th.get("max_cost_per_day") or 0.0) and agg_cost >= float(th.get("max_cost_per_day") or 0.0))
-                )
-                webhook = th.get("webhook_url")
-                if exceed and webhook:
-                    payload = {
-                        "day": day,
-                        "calls": agg_calls,
-                        "tokens": agg_tokens,
-                        "cost": round(agg_cost, 6),
-                        "provider": provider,
-                        "model": model,
-                        "kind": kind,
-                        "msg": "Threshold exceeded",
-                    }
-                    try:
-                        with httpx.Client(timeout=5.0) as http:
-                            http.post(webhook, json=payload)
-                    except Exception:
-                        pass
         except Exception:
             pass
 
-    async def chat(self, prompt: str, context: Optional[str] = None) -> str:
+    async def chat(self, prompt: str, context: str | None = None) -> str:
         import time
+
         t0 = time.perf_counter()
         p = self.provider.lower()
         if p == "openai" and os.environ.get("OPENAI_API_KEY"):
             try:
                 from openai import OpenAI
+
                 oa = OpenAI()
                 mdl = self.model or os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
                 resp = oa.chat.completions.create(
                     model=mdl,
                     messages=[{"role": "user", "content": content}],
-                    temperature=float(os.environ.get("CHAT_TEMPERATURE", "0.2")),
+                    temperature=float(settings.chat_temperature),
                 )
                 out = (resp.choices[0].message.content or "").strip()
                 dur = int((time.perf_counter() - t0) * 1000)
@@ -112,6 +157,7 @@ class LLMGateway:
         if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
             try:
                 import google.generativeai as genai
+
                 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
                 mdl = self.model or os.environ.get("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
@@ -126,7 +172,10 @@ class LLMGateway:
         if p == "openrouter" and os.environ.get("OPENROUTER_API_KEY"):
             try:
                 import httpx
-                mdl = self.model or os.environ.get("OPENROUTER_CHAT_MODEL", "meta-llama/llama-3.1-8b-instruct")
+
+                mdl = self.model or os.environ.get(
+                    "OPENROUTER_CHAT_MODEL", "meta-llama/llama-3.1-8b-instruct"
+                )
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
                 headers = {
                     "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
@@ -137,7 +186,11 @@ class LLMGateway:
                     "messages": [{"role": "user", "content": content}],
                 }
                 with httpx.Client(timeout=20.0) as http:
-                    r = http.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                    r = http.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
                     if r.status_code == 200:
                         data = r.json()
                         out = (data["choices"][0]["message"]["content"] or "").strip()
@@ -149,6 +202,7 @@ class LLMGateway:
         if p == "ollama" or os.environ.get("OLLAMA_URL"):
             try:
                 import httpx
+
                 base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
                 mdl = self.model or os.environ.get("OLLAMA_MODEL", "qwen2:7b")
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
@@ -159,28 +213,32 @@ class LLMGateway:
                         data = r.json()
                         out = (data.get("response") or "").strip()
                         dur = int((time.perf_counter() - t0) * 1000)
-                        self._record_usage("chat", "ollama", mdl, len(content) // 4, len(out) // 4, dur)
+                        self._record_usage(
+                            "chat", "ollama", mdl, len(content) // 4, len(out) // 4, dur
+                        )
                         return out
             except Exception:
                 pass
         # fallback
         return ""
 
-    async def stream_chat(self, prompt: str, context: Optional[str] = None):
+    async def stream_chat(self, prompt: str, context: str | None = None):
         import time
+
         t0 = time.perf_counter()
         p = self.provider.lower()
         acc = []
         if p == "openai" and os.environ.get("OPENAI_API_KEY"):
             try:
                 from openai import OpenAI
+
                 oa = OpenAI()
                 mdl = self.model or os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
                 stream = oa.chat.completions.create(
                     model=mdl,
                     messages=[{"role": "user", "content": content}],
-                    temperature=float(os.environ.get("CHAT_TEMPERATURE", "0.2")),
+                    temperature=float(settings.chat_temperature),
                     stream=True,
                 )
                 for ev in stream:
@@ -200,6 +258,7 @@ class LLMGateway:
         if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
             try:
                 import google.generativeai as genai
+
                 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
                 mdl = self.model or os.environ.get("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
@@ -219,6 +278,7 @@ class LLMGateway:
         if p == "ollama" or os.environ.get("OLLAMA_URL"):
             try:
                 import httpx
+
                 base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
                 mdl = self.model or os.environ.get("OLLAMA_MODEL", "qwen2:7b")
                 content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
@@ -239,7 +299,9 @@ class LLMGateway:
                                 continue
                 out = "".join(acc)
                 dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage("chat_stream", "ollama", mdl, len(content) // 4, len(out) // 4, dur)
+                self._record_usage(
+                    "chat_stream", "ollama", mdl, len(content) // 4, len(out) // 4, dur
+                )
                 return
             except Exception:
                 pass
@@ -247,19 +309,29 @@ class LLMGateway:
         ans = await self.chat(prompt=prompt, context=context)
         if ans:
             dur = int((time.perf_counter() - t0) * 1000)
-            self._record_usage("chat_stream", p, self.model or "", len(prompt) // 4, len(ans) // 4, dur)
+            self._record_usage(
+                "chat_stream", p, self.model or "", len(prompt) // 4, len(ans) // 4, dur
+            )
             yield ans
 
-    async def vision_markdown(self, image_bytes: bytes, prompt: str, model: Optional[str] = None) -> str:
+    async def vision_markdown(
+        self, image_bytes: bytes, prompt: str, model: str | None = None
+    ) -> str:
         import time
+
         t0 = time.perf_counter()
         p = self.provider
         # DashScope (Qwen-VL compatible-mode)
         if p == "dashscope" and os.environ.get("DASHSCOPE_API_KEY"):
             import base64
+
             import httpx
+
             key = os.environ.get("DASHSCOPE_API_KEY")
-            url = os.environ.get("DASHSCOPE_COMPAT_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
+            url = os.environ.get(
+                "DASHSCOPE_COMPAT_URL",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            )
             mdl = model or self.model or os.environ.get("DASHSCOPE_VISION_MODEL", "qwen-plus")
             b64 = base64.b64encode(image_bytes).decode("utf-8")
             body = {
@@ -293,10 +365,20 @@ class LLMGateway:
         # Volcengine Ark (compatible-mode)
         if p in {"ark", "volcengine"} and os.environ.get("VOLCENGINE_API_KEY"):
             import base64
+
             import httpx
+
             key = os.environ.get("VOLCENGINE_API_KEY")
-            url = os.environ.get("VOLCENGINE_COMPAT_URL", "https://api.ark.cn-beijing.volces.com/v3/chat/completions")
-            mdl = model or self.model or os.environ.get("VOLCENGINE_VISION_MODEL", os.environ.get("ARK_VISION_MODEL", "ep-vision"))
+            url = os.environ.get(
+                "VOLCENGINE_COMPAT_URL", "https://api.ark.cn-beijing.volces.com/v3/chat/completions"
+            )
+            mdl = (
+                model
+                or self.model
+                or os.environ.get(
+                    "VOLCENGINE_VISION_MODEL", os.environ.get("ARK_VISION_MODEL", "ep-vision")
+                )
+            )
             b64 = base64.b64encode(image_bytes).decode("utf-8")
             body = {
                 "model": mdl,
@@ -329,24 +411,39 @@ class LLMGateway:
         # Gemini vision (fallback if explicitly set)
         if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
             import google.generativeai as genai
+
             genai.configure(api_key=os.environ["GEMINI_API_KEY"])
             try:
-                mdl = model or self.model or os.environ.get("GEMINI_VISION_MODEL", "gemini-1.5-flash")
+                mdl = (
+                    model or self.model or os.environ.get("GEMINI_VISION_MODEL", "gemini-1.5-flash")
+                )
                 gg = genai.GenerativeModel(mdl)
-                resp = gg.generate_content([
-                    {"role": "user", "parts": [
-                        prompt,
-                        {"mime_type": "image/png", "data": image_bytes},
-                    ]}
-                ])
+                resp = gg.generate_content(
+                    [
+                        {
+                            "role": "user",
+                            "parts": [
+                                prompt,
+                                {"mime_type": "image/png", "data": image_bytes},
+                            ],
+                        }
+                    ]
+                )
                 out = getattr(resp, "text", "").strip()
                 dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage("vision", p, (model or self.model or "gemini-1.5-flash"), len(prompt) // 4, len(out) // 4, dur)
+                self._record_usage(
+                    "vision",
+                    p,
+                    (model or self.model or "gemini-1.5-flash"),
+                    len(prompt) // 4,
+                    len(out) // 4,
+                    dur,
+                )
                 return out
             except Exception:
                 return ""
         return ""
 
-    async def vision_table_markdown(self, image_bytes: bytes, model: Optional[str] = None) -> str:
+    async def vision_table_markdown(self, image_bytes: bytes, model: str | None = None) -> str:
         prompt = "将此表格图片转换为Markdown表格，确保数值精确，保留合并单元格结构。"
         return await self.vision_markdown(image_bytes=image_bytes, prompt=prompt, model=model)

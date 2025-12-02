@@ -1,21 +1,22 @@
 import os
-from typing import Optional, Dict, Any
-from typing_extensions import TypedDict
-from langgraph.graph import StateGraph
+from typing import Any
+
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import StateGraph
+from typing_extensions import TypedDict
 
 
 class MarkdownIngestState(TypedDict):
-    md: Optional[str]
-    file_path: Optional[str]
-    meta: Dict[str, Any]
+    md: str | None
+    file_path: str | None
+    meta: dict[str, Any]
 
 
 async def read_or_pass(state: MarkdownIngestState) -> MarkdownIngestState:
     fp = state.get("file_path")
     if fp and os.path.exists(fp):
         try:
-            with open(fp, "r", encoding="utf-8") as f:
+            with open(fp, encoding="utf-8") as f:
                 state["md"] = f.read()
         except Exception:
             state["md"] = state.get("md") or ""
@@ -24,6 +25,7 @@ async def read_or_pass(state: MarkdownIngestState) -> MarkdownIngestState:
         from core.embedding.provider_embedder import Embedder
         from core.storage.index_router import add as index_add
         from core.storage.keyword_index import get_keyword_index
+
         md = state.get("md") or ""
         paras = [p.strip() for p in md.split("\n\n") if p.strip()]
         emb = Embedder(dim=256)

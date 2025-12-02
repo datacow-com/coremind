@@ -10,11 +10,17 @@ services:
       POSTGRES_PASSWORD: omnirag_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "3504:5432"
     networks:
       - omnirag_network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "omnirag", "-d", "omnirag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   # Milvus Vector Database
   milvus:
@@ -28,16 +34,17 @@ services:
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
-      - "19530:19530"
-      - "9091:9091"
+      - "3505:19530"
+      - "3506:9091"
     networks:
       - omnirag_network
+    restart: unless-stopped
 
   # Backend API
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
     environment:
       - DATABASE_URL=postgresql://omnirag:omnirag_password@postgres:5432/omnirag
       - MILVUS_HOST=milvus
@@ -47,7 +54,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SERPER_API_KEY=${SERPER_API_KEY}
     ports:
-      - "8000:8000"
+      - "3503:8000"
     depends_on:
       - postgres
       - milvus
@@ -55,6 +62,13 @@ services:
       - ./uploads:/app/uploads
     networks:
       - omnirag_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx,sys; sys.exit(0 if httpx.get('http://localhost:8000/api/health', timeout=5).status_code==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
 
   # Frontend
   frontend:
@@ -62,26 +76,29 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3502:3000"
     depends_on:
       - backend
     networks:
       - omnirag_network
+    restart: unless-stopped
 
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
-      - "443:443"
+      - "3500:80"
+      - "3501:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
     depends_on:
-      - frontend
-      - backend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
     networks:
       - omnirag_network
+    restart: unless-stopped
 
 volumes:
   postgres_data:

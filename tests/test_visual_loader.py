@@ -1,14 +1,14 @@
 import asyncio
-import tempfile
 import os
+import tempfile
+
+from core.loaders.visual_pdf_loader import ParsingRule, VisualPDFLoader
 
 fitz = None
 try:
     import fitz  # PyMuPDF
 except Exception:
     pass
-
-from core.loaders.visual_pdf_loader import VisualPDFLoader, ParsingRule
 
 
 async def _create_pdf_with_text(tmp_path: str) -> str:
@@ -39,4 +39,3 @@ def test_visual_pdf_loader_runs():
         if fitz:
             assert len(chunks) >= 1
             assert all("page_num" in c for c in chunks)
-

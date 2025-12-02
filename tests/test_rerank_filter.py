@@ -1,5 +1,6 @@
 import asyncio
 import os
+
 from core.nodes.rerank import rerank
 
 
@@ -8,8 +9,26 @@ async def _run():
     state = {
         "query": "测试 关键字",
         "retrieved_chunks": [
-            {"id": "a", "content": "测试 内容", "page_num": 1, "doc_id": "doc", "chunk_index": 0, "metadata": {}, "score": 0.4, "rerank_score": None},
-            {"id": "b", "content": "关键字 内容", "page_num": 1, "doc_id": "doc", "chunk_index": 1, "metadata": {}, "score": 0.9, "rerank_score": None},
+            {
+                "id": "a",
+                "content": "测试 内容",
+                "page_num": 1,
+                "doc_id": "doc",
+                "chunk_index": 0,
+                "metadata": {},
+                "score": 0.4,
+                "rerank_score": None,
+            },
+            {
+                "id": "b",
+                "content": "关键字 内容",
+                "page_num": 1,
+                "doc_id": "doc",
+                "chunk_index": 1,
+                "metadata": {},
+                "score": 0.9,
+                "rerank_score": None,
+            },
         ],
         "metadata": {"top_k": 8},
     }

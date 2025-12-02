@@ -1,4 +1,7 @@
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any
+
+from typing_extensions import TypedDict
+
 
 class ProcessedChunk(TypedDict):
     id: str
@@ -6,37 +9,40 @@ class ProcessedChunk(TypedDict):
     page_num: int
     doc_id: str
     chunk_index: int
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
+
 
 class RetrievedChunk(ProcessedChunk):
     score: float
-    rerank_score: Optional[float]
+    rerank_score: float | None
+
 
 class Source(TypedDict):
-    chunk_id: Optional[str]
-    content: Optional[str]
-    score: Optional[float]
-    document_name: Optional[str]
-    page_number: Optional[int]
+    chunk_id: str | None
+    content: str | None
+    score: float | None
+    document_name: str | None
+    page_number: int | None
+
 
 class RAGState(TypedDict, total=False):
     query: str
-    messages: List[Dict[str, Any]]
-    intent: Optional[str]
-    documents: List[Dict[str, Any]]
-    chunks: List[ProcessedChunk]
-    vectors: List[List[float]]
-    retrieved_chunks: List[RetrievedChunk]
-    scores: List[float]
+    messages: list[dict[str, Any]]
+    intent: str | None
+    documents: list[dict[str, Any]]
+    chunks: list[ProcessedChunk]
+    vectors: list[list[float]]
+    retrieved_chunks: list[RetrievedChunk]
+    scores: list[float]
     context: str
     answer: str
-    sources: List[Source]
-    web_results: List[Dict[str, Any]]
+    sources: list[Source]
+    web_results: list[dict[str, Any]]
     web_search_needed: bool
     relevance_score: float
     hallucination_detected: bool
     hallucination_score: float
-    steps_taken: List[str]
+    steps_taken: list[str]
     step: str
-    error: Optional[str]
-    metadata: Dict[str, Any]
+    error: str | None
+    metadata: dict[str, Any]

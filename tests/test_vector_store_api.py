@@ -1,8 +1,8 @@
-import os
 import importlib.util
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import types
 
 
 def _load_module(name: str, rel_path: str):
@@ -31,7 +31,13 @@ def test_vector_collections_endpoint():
     assert isinstance(data["collections"], list)
     if data["collections"]:
         c = data["collections"][0]
-        for k in ["name", "document_count", "chunk_count", "embedding_dimension", "distance_metric"]:
+        for k in [
+            "name",
+            "document_count",
+            "chunk_count",
+            "embedding_dimension",
+            "distance_metric",
+        ]:
             assert k in c
 
 
@@ -39,19 +45,26 @@ def test_vector_search_endpoint_structure(monkeypatch):
     class DummyEmbedder:
         def __init__(self, dim: int = 256):
             self.dim = dim
+
         def embed(self, text: str):
             import numpy as np
+
             return np.zeros(self.dim, dtype=np.float32)
 
     def fake_search(qvec, top_k=10):
-        return [({
-            "id": "docA-p1-chunk-0",
-            "content": "hello world",
-            "page_num": 1,
-            "doc_id": "/tmp/docA.pdf",
-            "chunk_index": 0,
-            "metadata": {},
-        }, 0.99)]
+        return [
+            (
+                {
+                    "id": "docA-p1-chunk-0",
+                    "content": "hello world",
+                    "page_num": 1,
+                    "doc_id": "/tmp/docA.pdf",
+                    "chunk_index": 0,
+                    "metadata": {},
+                },
+                0.99,
+            )
+        ]
 
     # patch Embedder and index search in the loaded module namespace
     monkeypatch.setattr(routes_mod, "Embedder", DummyEmbedder)

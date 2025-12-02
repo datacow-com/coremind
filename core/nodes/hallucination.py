@@ -1,15 +1,15 @@
-from typing import Dict, List
-import os
 from core.state import RAGState, RetrievedChunk
+from server.config import settings
 
 
-async def hallucination(state: RAGState) -> Dict:
+async def hallucination(state: RAGState) -> dict:
     answer = state.get("answer", "")
-    chunks: List[RetrievedChunk] = state.get("retrieved_chunks", [])
+    chunks: list[RetrievedChunk] = state.get("retrieved_chunks", [])
     context = "\n\n".join([c.get("content", "") for c in chunks])
     score = 0.5
     try:
         from core.llm.gateway import LLMGateway
+
         gw = LLMGateway()
         prompt = (
             "根据提供的参考上下文，评估回答的一致性，输出一个0到1之间的数字，"
@@ -22,6 +22,11 @@ async def hallucination(state: RAGState) -> Dict:
             score = 0.5
     except Exception:
         score = 0.5
-    thr = float(os.environ.get("HALLUCINATION_THRESHOLD", "0.3"))
+    thr = float(settings.hallucination_threshold)
     hallucination_detected = bool(score < thr)
-    return {"hallucination_score": float(score), "hallucination_detected": hallucination_detected, "step": "hallucination", "metrics": {"hallucination": {"score": float(score), "threshold": thr}}}
+    return {
+        "hallucination_score": float(score),
+        "hallucination_detected": hallucination_detected,
+        "step": "hallucination",
+        "metrics": {"hallucination": {"score": float(score), "threshold": thr}},
+    }

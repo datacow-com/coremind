@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 from core.llm.gateway import LLMGateway
 
 
@@ -7,14 +8,19 @@ class DummyHTTPXClient:
     def __init__(self, timeout=5.0):
         self.timeout = timeout
         self.last = None
+
     def __enter__(self):
         return self
+
     def __exit__(self, exc_type, exc, tb):
         return False
+
     def post(self, url, json=None):
         self.last = {"url": url, "json": json}
+
         class R:
             status_code = 200
+
         return R()
 
 
@@ -40,9 +46,17 @@ def test_threshold_webhook_trigger(tmp_path, monkeypatch):
     monkeypatch.setattr(LLMGateway, "_usage_dir", lambda self: str(base))
     # monkeypatch httpx.Client used inside gateway
     import core.llm.gateway as gmod
+
     gmod.httpx = type("H", (), {"Client": DummyHTTPXClient})
     # record usage exceeding tokens
-    gw._record_usage(kind="chat", provider="dashscope", model="qwen-plus", tokens_in=8, tokens_out=5, duration_ms=100)
+    gw._record_usage(
+        kind="chat",
+        provider="dashscope",
+        model="qwen-plus",
+        tokens_in=8,
+        tokens_out=5,
+        duration_ms=100,
+    )
     # assert webhook captured
     client = gmod.httpx.Client()
     assert client.last is not None or os.path.exists(base / "usage.jsonl")

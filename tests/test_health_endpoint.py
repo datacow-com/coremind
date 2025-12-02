@@ -1,5 +1,6 @@
-import os
 import importlib.util
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -17,9 +18,11 @@ def _load_module(name: str, rel_path: str):
 health_mod = _load_module("server_health_local", "server/health.py")
 app = FastAPI()
 
+
 @app.get("/api/health")
 async def health():
     return health_mod.get_health()
+
 
 client = TestClient(app)
 

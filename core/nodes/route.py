@@ -1,7 +1,7 @@
-from typing import Dict
 from core.state import RAGState
 
-async def route(state: RAGState) -> Dict:
+
+async def route(state: RAGState) -> dict:
     q = (state.get("query") or "").lower()
     intent = "qa"
     if any(k in q for k in ["总结", "总结一下", "概括", "overview", "summary"]):

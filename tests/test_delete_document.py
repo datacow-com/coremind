@@ -1,7 +1,7 @@
 import asyncio
+import importlib.util
 import os
 import tempfile
-import importlib.util
 
 
 def _load_module(name: str, rel_path: str):
@@ -38,7 +38,7 @@ async def _create_pdf(path: str):
 def test_delete_document_removes_file_and_chunks():
     if not fitz:
         return
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory() as _td:
         uploads_dir = os.path.join(os.getcwd(), "data", "uploads")
         os.makedirs(uploads_dir, exist_ok=True)
         doc_id = "del-doc"

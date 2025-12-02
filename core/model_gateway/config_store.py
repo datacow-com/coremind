@@ -1,13 +1,12 @@
-from typing import Dict, Any
-import os
 import json
-
+import os
+from typing import Any
 
 CONFIG_DIR = os.path.join(os.getcwd(), "data", "config")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "providers.json")
 
 
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "bindings": {
         "parse": "dashscope",
         "retrieve": "embedding",
@@ -21,9 +20,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "providers": [
         {"name": "openai", "model": "gpt-4o-mini", "base_url": "https://api.openai.com"},
-        {"name": "gemini", "model": "gemini-1.5-flash", "base_url": "https://generativelanguage.googleapis.com"},
-        {"name": "anthropic", "model": "claude-3-5-sonnet", "base_url": "https://api.anthropic.com"},
-        {"name": "openrouter", "model": "meta-llama/llama-3.1-8b-instruct", "base_url": "https://openrouter.ai/api"},
+        {
+            "name": "gemini",
+            "model": "gemini-1.5-flash",
+            "base_url": "https://generativelanguage.googleapis.com",
+        },
+        {
+            "name": "anthropic",
+            "model": "claude-3-5-sonnet",
+            "base_url": "https://api.anthropic.com",
+        },
+        {
+            "name": "openrouter",
+            "model": "meta-llama/llama-3.1-8b-instruct",
+            "base_url": "https://openrouter.ai/api",
+        },
         {"name": "dashscope", "model": "qwen-max", "base_url": "https://dashscope.aliyuncs.com"},
         {"name": "ark", "model": "ep-vision", "base_url": "https://api.ark.cn-beijing.volces.com"},
         {"name": "moonshot", "model": "moonshot-v1-8k", "base_url": "https://api.moonshot.cn"},
@@ -50,24 +61,24 @@ REQUIRED_ENV = {
 }
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     try:
         if not os.path.exists(CONFIG_PATH):
             os.makedirs(CONFIG_DIR, exist_ok=True)
             save_config(DEFAULT_CONFIG)
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return DEFAULT_CONFIG
 
 
-def save_config(cfg: Dict[str, Any]) -> None:
+def save_config(cfg: dict[str, Any]) -> None:
     os.makedirs(CONFIG_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
-def validate_provider(name: str) -> Dict[str, Any]:
+def validate_provider(name: str) -> dict[str, Any]:
     envs = REQUIRED_ENV.get(name, [])
     missing = [e for e in envs if not os.environ.get(e)]
     return {

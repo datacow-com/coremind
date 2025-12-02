@@ -1,15 +1,14 @@
 import asyncio
-import tempfile
 import os
+import tempfile
+
+from core.nodes.ingest import ingest
 
 fitz = None
 try:
     import fitz  # PyMuPDF
 except Exception:
     pass
-
-from core.nodes.ingest import ingest
-from core.loaders.visual_pdf_loader import VisualPDFLoader, ParsingRule
 
 
 async def _create_pdf(tmp_path: str) -> str:
@@ -34,4 +33,3 @@ def test_ingest_with_document():
         assert isinstance(result["chunks"], list)
         if fitz:
             assert len(result["chunks"]) >= 1
-

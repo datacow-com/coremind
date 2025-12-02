@@ -1,4 +1,3 @@
-from typing import List
 import os
 
 
@@ -9,15 +8,16 @@ class Reranker:
         if os.environ.get("USE_CROSS_ENCODER") == "1":
             try:
                 from sentence_transformers import CrossEncoder
+
                 self._ce = CrossEncoder(name)
             except Exception:
                 self._ce = None
         else:
             self._ce = None
 
-    def _fallback_scores(self, query: str, texts: List[str]) -> List[float]:
+    def _fallback_scores(self, query: str, texts: list[str]) -> list[float]:
         q = set([w for w in query.lower().split() if w])
-        out: List[float] = []
+        out: list[float] = []
         for t in texts:
             T = set([w for w in (t or "").lower().split() if w])
             if not q:
@@ -26,7 +26,7 @@ class Reranker:
                 out.append(len(q & T) / len(q))
         return out
 
-    def score(self, query: str, texts: List[str]) -> List[float]:
+    def score(self, query: str, texts: list[str]) -> list[float]:
         if not texts:
             return []
         if self._ce is None:

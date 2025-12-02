@@ -32,6 +32,8 @@ const ChatPage: React.FC = () => {
   const [pdfPreview, setPdfPreview] = useState<string | null>(null)
   const [previewImg, setPreviewImg] = useState<string | null>(null)
   const [previewBBoxes, setPreviewBBoxes] = useState<Array<{x:number,y:number,w:number,h:number}>>([])
+  const previewImgRef = useRef<HTMLImageElement>(null)
+  const [imgScale, setImgScale] = useState<{sx:number, sy:number}>({ sx: 1, sy: 1 })
   const [topK, setTopK] = useState<number>(5)
   const [streaming, setStreaming] = useState<boolean>(true)
   const [phase, setPhase] = useState<string>('idle')
@@ -46,6 +48,7 @@ const ChatPage: React.FC = () => {
   const [retrievalCount, setRetrievalCount] = useState<number | null>(null)
   const [rerankAvg, setRerankAvg] = useState<number | null>(null)
   const [tokenRate, setTokenRate] = useState<{cps:number,wps:number}|null>(null)
+  const [lastPing, setLastPing] = useState<number | null>(null)
   const [exportLinks, setExportLinks] = useState<Record<string, string>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -185,6 +188,10 @@ const ChatPage: React.FC = () => {
             const response = await fetch('/api/chat/stream', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
             })
+            if (!response.ok) {
+              if (response.status === 429) setStreamError('Too many requests (429)')
+              throw new Error('stream start failed')
+            }
             const reader = response.body?.getReader()
             const decoder = new TextDecoder()
             let buf = ''
@@ -195,7 +202,17 @@ const ChatPage: React.FC = () => {
               const parts = buf.split('\n\n')
               buf = parts.pop() || ''
               for (const chunk of parts) {
-                const line = chunk.trim()
+                const trimmed = chunk.trim()
+                if (trimmed.includes('event: ping')) {
+                  const dl = trimmed.split('\n').find(l => l.startsWith('data:')) || ''
+                  const js = dl.replace('data:', '').trim()
+                  try {
+                    const evt = JSON.parse(js)
+                    if (evt.ts) setLastPing(parseInt(evt.ts))
+                  } catch {}
+                  continue
+                }
+                const line = trimmed
                 if (!line.startsWith('data:')) continue
                 const jsonStr = line.slice(5).trim()
                 try {
@@ -263,7 +280,10 @@ const ChatPage: React.FC = () => {
             web_search_enabled: webSearchEnabled,
           })
         })
-        if (!response.ok) throw new Error('Failed to get response')
+        if (!response.ok) {
+          if (response.status === 429) setStreamError('Too many requests (429)')
+          throw new Error('Failed to get response')
+        }
         const data = await response.json()
         const assistantMessage: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: data.answer, sources: data.sources }
         setMessages(prev => [...prev, assistantMessage])
@@ -374,6 +394,19 @@ const ChatPage: React.FC = () => {
     }
   }
 
+  const handleExportTables = async (message: Message) => {
+    try {
+      const tables = (message.sources || [])
+        .map(s => s.content || '')
+        .filter(c => c.includes('|'))
+      if (tables.length === 0) return
+      const res = await fetch('/api/execute/export/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tables }) })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.download_url) setExportLinks((prev: Record<string, string>) => ({ ...prev, [message.id]: data.download_url }))
+    } catch {}
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -473,6 +506,11 @@ const ChatPage: React.FC = () => {
                   className="w-16 border border-gray-300 rounded px-2 py-1"
                 />
               </div>
+              <div className="text-xs text-gray-600">
+                <span className="mr-2">Conn: {lastPing && (Date.now() - (lastPing)) < 30000 ? 'alive' : 'idle'}</span>
+                {requestId && (<span className="mr-2">req: {requestId}</span>)}
+                {streamError && streamError.includes('Too many requests') && (<span className="text-red-600">429</span>)}
+              </div>
 
               <div className="flex items-center space-x-2 text-sm">
                 <label className="text-gray-600">Stream</label>
@@ -506,6 +544,9 @@ const ChatPage: React.FC = () => {
                   )}
                   {fallbackMsg && (
                     <span className="ml-2 text-yellow-600">{fallbackMsg}</span>
+                  )}
+                  {lastPing && (
+                    <span className="ml-2 text-green-600">ping</span>
                   )}
                 </div>
               )}
@@ -650,16 +691,32 @@ const ChatPage: React.FC = () => {
                 <p className="mb-2">{pdfPreview}</p>
               {previewImg ? (
                 <div className="relative border rounded overflow-hidden">
-                  <img src={previewImg} alt="preview" className="max-w-full" />
+                  <img
+                    ref={previewImgRef}
+                    src={previewImg}
+                    alt="preview"
+                    className="max-w-full"
+                    onLoad={() => {
+                      try {
+                        const el = previewImgRef.current
+                        if (!el) return
+                        const nw = el.naturalWidth || 1
+                        const nh = el.naturalHeight || 1
+                        const cw = el.clientWidth || nw
+                        const ch = el.clientHeight || nh
+                        setImgScale({ sx: cw / nw, sy: ch / nh })
+                      } catch {}
+                    }}
+                  />
                   {previewBBoxes.map((b, i) => (
                     <div
                       key={i}
                       style={{
                         position: 'absolute',
-                        left: b.x,
-                        top: b.y,
-                        width: b.w,
-                        height: b.h,
+                        left: b.x * imgScale.sx,
+                        top: b.y * imgScale.sy,
+                        width: b.w * imgScale.sx,
+                        height: b.h * imgScale.sy,
                         border: '2px solid rgba(59,130,246,0.8)',
                         boxShadow: '0 0 0 2px rgba(59,130,246,0.3) inset'
                       }}
@@ -685,15 +742,3 @@ const ChatPage: React.FC = () => {
 }
 
 export default ChatPage
-  const handleExportTables = async (message: Message) => {
-    try {
-      const tables = (message.sources || [])
-        .map(s => s.content || '')
-        .filter(c => c.includes('|'))
-      if (tables.length === 0) return
-      const res = await fetch('/api/execute/export/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tables }) })
-      if (!res.ok) return
-      const data = await res.json()
-      if (data.download_url) setExportLinks((prev: Record<string, string>) => ({ ...prev, [message.id]: data.download_url }))
-    } catch {}
-  }

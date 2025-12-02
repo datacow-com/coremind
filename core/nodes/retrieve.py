@@ -1,13 +1,13 @@
-from typing import Dict, List
 import time
-from core.state import RAGState, RetrievedChunk
+
 from core.embedding.provider_embedder import Embedder
+from core.state import RAGState, RetrievedChunk
 from core.storage.index_router import search as search_index
 from core.storage.keyword_index import get_keyword_index
-import os
+from server.config import settings
 
 
-async def retrieve(state: RAGState) -> Dict:
+async def retrieve(state: RAGState) -> dict:
     query = state.get("query", "")
     if not query:
         return {"retrieved_chunks": [], "step": "retrieval"}
@@ -15,25 +15,27 @@ async def retrieve(state: RAGState) -> Dict:
     emb = Embedder(dim=256)
     qvec = emb.embed(query)
     meta = state.get("metadata", {}) or {}
-    v_weight = float(meta.get("vector_weight") or os.environ.get("VECTOR_WEIGHT", "0.6"))
-    k_weight = float(meta.get("keyword_weight") or os.environ.get("KEYWORD_WEIGHT", "0.4"))
-    top_k = int(meta.get("top_k") or 5)
+    v_weight = float(meta.get("vector_weight") or settings.vector_weight)
+    k_weight = float(meta.get("keyword_weight") or settings.keyword_weight)
+    top_k = int(meta.get("top_k") or settings.top_k_default)
     doc_paths = meta.get("doc_paths") or None
     t0 = time.perf_counter()
+
     # 语言提示：用于双栈集合选择
     def _lang_hint(text: str) -> str:
         t = (text or "").strip()
         if not t:
             return "en"
         total = len(t)
-        cjk = sum(1 for ch in t if '\u4e00' <= ch <= '\u9fff')
+        cjk = sum(1 for ch in t if "\u4e00" <= ch <= "\u9fff")
         return "cn" if (total and (cjk / total) >= 0.2) else "en"
 
-    use_base = os.environ.get("USE_BASE_RETRIEVER") == "1"
+    use_base = bool(settings.use_base_retriever)
     vector_results = None
     if use_base:
         try:
             from core.retriever.base_retriever import OmniIndexRetriever
+
             retr = OmniIndexRetriever(top_k=top_k)
             docs = retr._get_relevant_documents(query)
             # map to [(meta, score)]
@@ -51,8 +53,10 @@ async def retrieve(state: RAGState) -> Dict:
     keyword_results = kw.search(query, top_k=top_k)
 
     if doc_paths:
+
         def keep(meta):
-            return (meta.get("doc_id") in doc_paths)
+            return meta.get("doc_id") in doc_paths
+
         vector_results = [(m, s) for (m, s) in vector_results if keep(m)]
         keyword_results = [(m, s) for (m, s) in keyword_results if keep(m)]
 
@@ -61,7 +65,7 @@ async def retrieve(state: RAGState) -> Dict:
     def to_rank_map(results):
         # results: List[Tuple[meta, score]]
         sorted_list = sorted(results, key=lambda t: float(t[1]), reverse=True)
-        rank_map: Dict[str, int] = {}
+        rank_map: dict[str, int] = {}
         for idx, (m, _s) in enumerate(sorted_list, start=1):
             rid = m.get("id")
             # 若重复出现，以最靠前排名为准
@@ -72,8 +76,8 @@ async def retrieve(state: RAGState) -> Dict:
     vec_rank = to_rank_map([(m, s * v_weight) for (m, s) in vector_results])
     kw_rank = to_rank_map([(m, s * k_weight) for (m, s) in keyword_results])
 
-    k_rrf = int(os.environ.get("RRF_K", "60"))
-    fused: Dict[str, RetrievedChunk] = {}
+    k_rrf = int(settings.rrf_k)
+    fused: dict[str, RetrievedChunk] = {}
 
     def ensure(meta):
         rid = meta.get("id")
@@ -116,7 +120,13 @@ async def retrieve(state: RAGState) -> Dict:
             rrf_score += 1.0 / (k_rrf + kw_rank[rid])
         item["score"] = float(rrf_score)
 
-    results: List[RetrievedChunk] = list(fused.values())
-    retrieved: List[RetrievedChunk] = sorted(results, key=lambda x: x.get("score", 0.0), reverse=True)[:top_k]
+    results: list[RetrievedChunk] = list(fused.values())
+    retrieved: list[RetrievedChunk] = sorted(
+        results, key=lambda x: x.get("score", 0.0), reverse=True
+    )[:top_k]
     dur = int((time.perf_counter() - t0) * 1000)
-    return {"retrieved_chunks": retrieved, "step": "retrieval", "metrics": {"retrieve": {"count": len(retrieved), "duration_ms": dur}}}
+    return {
+        "retrieved_chunks": retrieved,
+        "step": "retrieval",
+        "metrics": {"retrieve": {"count": len(retrieved), "duration_ms": dur}},
+    }
