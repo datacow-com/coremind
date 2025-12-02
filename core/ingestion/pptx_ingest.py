@@ -1,8 +1,8 @@
 import os
-import xml.etree.ElementTree as ET
 import zipfile
 from typing import Any
 
+from defusedxml import ElementTree as ET
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph
 from typing_extensions import TypedDict
