@@ -205,24 +205,36 @@ const KnowledgeBaseDetail: React.FC = () => {
           <div className="text-xs text-gray-500">独立配置与管理</div>
         </div>
         <nav className="mt-2 space-y-1">
-          <Button variant="ghost" className={`w-full justify-start ${tab === "files" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("files")}>
+          <button
+            className={`w-full flex items-center px-3 py-2 text-sm rounded-md hover:bg-muted text-muted-foreground ${tab === "files" ? "text-foreground font-medium border-l-2 border-primary" : ""}`}
+            onClick={() => setTab("files")}
+          >
             <FileText className="h-4 w-4 mr-2" /> 文件列表
-          </Button>
-          <Button variant="ghost" className={`w-full justify-start ${tab === "test" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("test")}>
+          </button>
+          <button
+            className={`w-full flex items-center px-3 py-2 text-sm rounded-md hover:bg-muted text-muted-foreground ${tab === "test" ? "text-foreground font-medium border-l-2 border-primary" : ""}`}
+            onClick={() => setTab("test")}
+          >
             <ClipboardList className="h-4 w-4 mr-2" /> 检索测试
-          </Button>
-          <Button variant="ghost" className={`w-full justify-start ${tab === "logs" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("logs")}>
+          </button>
+          <button
+            className={`w-full flex items-center px-3 py-2 text-sm rounded-md hover:bg-muted text-muted-foreground ${tab === "logs" ? "text-foreground font-medium border-l-2 border-primary" : ""}`}
+            onClick={() => setTab("logs")}
+          >
             <Activity className="h-4 w-4 mr-2" /> 日志
-          </Button>
-          <Button variant="ghost" className={`w-full justify-start ${tab === "config" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("config")}>
+          </button>
+          <button
+            className={`w-full flex items-center px-3 py-2 text-sm rounded-md hover:bg-muted text-muted-foreground ${tab === "config" ? "text-foreground font-medium border-l-2 border-primary" : ""}`}
+            onClick={() => setTab("config")}
+          >
             <Settings className="h-4 w-4 mr-2" /> 配置
-          </Button>
+          </button>
         </nav>
       </div>
 
       <div className="flex-1">
         {tab === "config" && (
-          <div className="p-6 space-y-6">
+          <div className="max-w-screen-lg mx-auto p-6 space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>基础信息</CardTitle>
@@ -601,7 +613,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <Button onClick={async () => {
+                  <Button size="sm" onClick={async () => {
                       await fetch(
                         `/api/kb/${encodeURIComponent(String(name || ""))}/graph/build`,
                         { method: "POST" },
@@ -744,7 +756,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <Button onClick={async () => {
+                  <Button size="sm" onClick={async () => {
                       await fetch(
                         `/api/kb/${encodeURIComponent(String(name || ""))}/raptor/generate`,
                         {
@@ -827,7 +839,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <Button onClick={() => {
+                  <Button size="sm" onClick={() => {
                       const arr = Array.isArray(kbConfig.data_sources)
                         ? kbConfig.data_sources.slice()
                         : [];
@@ -920,7 +932,7 @@ const KnowledgeBaseDetail: React.FC = () => {
         )}
 
         {tab === "logs" && (
-          <div className="p-6">
+          <div className="max-w-screen-lg mx-auto p-6">
             <div className="text-lg font-semibold mb-4">日志</div>
             <div className="bg-white border rounded p-4">
               <table className="min-w-full text-sm">
@@ -956,28 +968,17 @@ const KnowledgeBaseDetail: React.FC = () => {
         )}
 
         {tab === "test" && (
-          <div className="p-6">
+          <div className="max-w-screen-lg mx-auto p-6">
             <div className="text-lg font-semibold mb-4">检索测试</div>
-            <div className="bg-white border rounded p-4">
+            <Card>
+              <CardContent className="p-4">
               <div className="flex items-center space-x-2 mb-3">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="输入测试查询"
-                  className="flex-1 border rounded px-3 py-2"
-                />
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="输入测试查询" className="flex-1 h-9" />
                 <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">Top K</label>
-                  <input
-                    type="number"
-                    value={topK}
-                    min={1}
-                    max={50}
-                    onChange={(e) => setTopK(parseInt(e.target.value || "5"))}
-                    className="w-20 border rounded px-2 py-1"
-                  />
+                  <Label>Top K</Label>
+                  <Input type="number" value={topK} min={1} max={50} onChange={(e) => setTopK(parseInt(e.target.value || "5"))} className="w-20" />
                 </div>
-                <Button onClick={testSearch}>查询</Button>
+                <Button size="sm" onClick={testSearch}>查询</Button>
               </div>
               <div className="space-y-2">
                 {results.length === 0 ? (
@@ -986,7 +987,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                   results.map((r, idx) => (
                     <div key={idx} className="border rounded p-3 text-sm">
                       <div className="text-gray-600">
-                        {r.document_name} • p.{r.page_number} • score{" "}
+                        {r.document_name} • p.{r.page_number} • score {" "}
                         {r.score?.toFixed?.(3) ?? r.score}
                       </div>
                       <div className="mt-1 whitespace-pre-wrap">
@@ -996,22 +997,18 @@ const KnowledgeBaseDetail: React.FC = () => {
                   ))
                 )}
               </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {tab === "files" && (
-          <div className="p-6">
+          <div className="max-w-screen-lg mx-auto p-6">
             <div className="text-lg font-semibold mb-4">文件列表</div>
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center border rounded px-2">
-                <Search className="h-4 w-4 text-gray-400" />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="搜索文件名"
-                  className="px-2 py-1 text-sm outline-none"
-                />
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索文件名" className="w-64" />
               </div>
               <div>
                 <input
@@ -1021,16 +1018,13 @@ const KnowledgeBaseDetail: React.FC = () => {
                   className="hidden"
                   onChange={uploadPdf}
                 />
-                <button
-                  onClick={() => uploadRef.current?.click()}
-                  className="px-3 py-2 bg-blue-600 text-white rounded"
-                >
-                  <Upload className="h-4 w-4 inline mr-1" />
-                  新增文件
-                </button>
+                <Button size="sm" onClick={() => uploadRef.current?.click()}>
+                  <Upload className="h-4 w-4 inline mr-1" /> 新增文件
+                </Button>
               </div>
             </div>
-            <div className="bg-white border rounded">
+            <Card>
+              <CardContent className="p-0">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-500">
@@ -1064,10 +1058,15 @@ const KnowledgeBaseDetail: React.FC = () => {
                           >
                             <Download className="h-4 w-4 inline" /> 下载
                           </a>
-                          <Button variant="destructive" onClick={() => removeDoc(d.id)}>
-                            <Trash2 className="h-4 w-4 inline" /> 删除
-                          </Button>
-                          <Button onClick={async () => {
+                          <a
+                            className="text-destructive cursor-pointer hover:underline"
+                            onClick={() => removeDoc(d.id)}
+                          >
+                            删除
+                          </a>
+                          <a
+                            className="text-primary cursor-pointer hover:underline"
+                            onClick={async () => {
                               await fetch(
                                 `/api/kb/${encodeURIComponent(String(name || ""))}/raptor/generate`,
                                 {
@@ -1102,16 +1101,18 @@ const KnowledgeBaseDetail: React.FC = () => {
                                   },
                                 }));
                               }
-                            }}>
-                            <ClipboardList className="h-4 w-4 inline" /> 生成RAPTOR
-                          </Button>
+                            }}
+                          >
+                            生成RAPTOR
+                          </a>
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>
