@@ -17,6 +17,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { SelectSearch } from "@/components/ui/select-search";
+import Button from "@/components/ui/button";
 
 interface UsageAgg {
   day: string;
@@ -203,35 +204,19 @@ const KnowledgeBaseDetail: React.FC = () => {
           <div className="mt-3 font-medium">{name}</div>
           <div className="text-xs text-gray-500">独立配置与管理</div>
         </div>
-        <nav className="mt-2">
-          <button
-            className={`w-full text-left px-4 py-2 ${tab === "files" ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50"}`}
-            onClick={() => setTab("files")}
-          >
-            <FileText className="h-4 w-4 inline mr-2" />
-            文件列表
-          </button>
-          <button
-            className={`w-full text-left px-4 py-2 ${tab === "test" ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50"}`}
-            onClick={() => setTab("test")}
-          >
-            <ClipboardList className="h-4 w-4 inline mr-2" />
-            检索测试
-          </button>
-          <button
-            className={`w-full text-left px-4 py-2 ${tab === "logs" ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50"}`}
-            onClick={() => setTab("logs")}
-          >
-            <Activity className="h-4 w-4 inline mr-2" />
-            日志
-          </button>
-          <button
-            className={`w-full text-left px-4 py-2 ${tab === "config" ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50"}`}
-            onClick={() => setTab("config")}
-          >
-            <Settings className="h-4 w-4 inline mr-2" />
-            配置
-          </button>
+        <nav className="mt-2 space-y-1">
+          <Button variant="ghost" className={`w-full justify-start ${tab === "files" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("files")}>
+            <FileText className="h-4 w-4 mr-2" /> 文件列表
+          </Button>
+          <Button variant="ghost" className={`w-full justify-start ${tab === "test" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("test")}>
+            <ClipboardList className="h-4 w-4 mr-2" /> 检索测试
+          </Button>
+          <Button variant="ghost" className={`w-full justify-start ${tab === "logs" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("logs")}>
+            <Activity className="h-4 w-4 mr-2" /> 日志
+          </Button>
+          <Button variant="ghost" className={`w-full justify-start ${tab === "config" ? "bg-muted text-primary" : ""}`} onClick={() => setTab("config")}>
+            <Settings className="h-4 w-4 mr-2" /> 配置
+          </Button>
         </nav>
       </div>
 
@@ -616,9 +601,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <button
-                    className="px-3 py-2 bg-blue-600 text-white rounded"
-                    onClick={async () => {
+                  <Button onClick={async () => {
                       await fetch(
                         `/api/kb/${encodeURIComponent(String(name || ""))}/graph/build`,
                         { method: "POST" },
@@ -636,10 +619,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                           },
                         }));
                       }
-                    }}
-                  >
-                    构建知识图谱
-                  </button>
+                    }}>构建知识图谱</Button>
                 </div>
               </CardContent>
             </Card>
@@ -764,9 +744,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <button
-                    className="px-3 py-2 bg-blue-600 text-white rounded"
-                    onClick={async () => {
+                  <Button onClick={async () => {
                       await fetch(
                         `/api/kb/${encodeURIComponent(String(name || ""))}/raptor/generate`,
                         {
@@ -792,10 +770,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                           raptor: { ...(prev.raptor || {}), status: d.status },
                         }));
                       }
-                    }}
-                  >
-                    生成 RAPTOR
-                  </button>
+                    }}>生成 RAPTOR</Button>
                 </div>
               </CardContent>
             </Card>
@@ -852,9 +827,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <button
-                    className="px-3 py-2 bg-blue-600 text-white rounded"
-                    onClick={() => {
+                  <Button onClick={() => {
                       const arr = Array.isArray(kbConfig.data_sources)
                         ? kbConfig.data_sources.slice()
                         : [];
@@ -868,10 +841,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                         });
                       updateKb({ data_sources: arr });
                       setNewSource({ type: "" });
-                    }}
-                  >
-                    添加数据源
-                  </button>
+                    }}>添加数据源</Button>
                 </div>
                 <Separator />
                 <div className="space-y-2">
@@ -890,16 +860,11 @@ const KnowledgeBaseDetail: React.FC = () => {
                               {ds.config?.endpoint || ""}
                             </div>
                           </div>
-                          <button
-                            className="text-red-600"
-                            onClick={() => {
+                          <Button variant="destructive" onClick={() => {
                               const arr = (kbConfig.data_sources || []).slice();
                               arr.splice(idx, 1);
                               updateKb({ data_sources: arr });
-                            }}
-                          >
-                            删除
-                          </button>
+                            }}>删除</Button>
                         </div>
                       ),
                     )
@@ -930,12 +895,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                       className="w-24"
                     />
                   </div>
-                  <button
-                    onClick={testSearch}
-                    className="px-3 py-2 bg-blue-600 text-white rounded"
-                  >
-                    查询
-                  </button>
+                  <Button onClick={testSearch}>查询</Button>
                 </div>
                 <div className="space-y-2">
                   {results.length === 0 ? (
@@ -1017,12 +977,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                     className="w-20 border rounded px-2 py-1"
                   />
                 </div>
-                <button
-                  onClick={testSearch}
-                  className="px-3 py-2 bg-blue-600 text-white rounded"
-                >
-                  查询
-                </button>
+                <Button onClick={testSearch}>查询</Button>
               </div>
               <div className="space-y-2">
                 {results.length === 0 ? (
@@ -1109,15 +1064,10 @@ const KnowledgeBaseDetail: React.FC = () => {
                           >
                             <Download className="h-4 w-4 inline" /> 下载
                           </a>
-                          <button
-                            className="text-red-600"
-                            onClick={() => removeDoc(d.id)}
-                          >
+                          <Button variant="destructive" onClick={() => removeDoc(d.id)}>
                             <Trash2 className="h-4 w-4 inline" /> 删除
-                          </button>
-                          <button
-                            className="text-green-600"
-                            onClick={async () => {
+                          </Button>
+                          <Button onClick={async () => {
                               await fetch(
                                 `/api/kb/${encodeURIComponent(String(name || ""))}/raptor/generate`,
                                 {
@@ -1152,11 +1102,9 @@ const KnowledgeBaseDetail: React.FC = () => {
                                   },
                                 }));
                               }
-                            }}
-                          >
-                            <ClipboardList className="h-4 w-4 inline" />{" "}
-                            生成RAPTOR
-                          </button>
+                            }}>
+                            <ClipboardList className="h-4 w-4 inline" /> 生成RAPTOR
+                          </Button>
                         </td>
                       </tr>
                     ))
