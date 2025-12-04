@@ -48,6 +48,7 @@ const Layout: React.FC = () => {
       </header>
       <main className="flex-1 overflow-auto h-[calc(100vh-56px)]">
         <div className="max-w-screen-xl mx-auto px-6 py-6 h-full">
+          <div className="mb-4 text-sm text-gray-700">hello, world</div>
           <Outlet />
         </div>
       </main>
