@@ -57,6 +57,8 @@ const KnowledgeBaseDetail: React.FC = () => {
     { label: string; value: string }[]
   >([]);
 
+  const ingestMode = kbConfig.ingestion_pipeline?.mode || "builtin";
+
   const loadRuntime = async () => {
     try {
       const r = await fetch("/api/config/runtime");
@@ -422,8 +424,41 @@ const KnowledgeBaseDetail: React.FC = () => {
               <CardHeader>
                 <CardTitle>Ingestion pipeline（内置）</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 gap-4">
+                  <div className="flex items-center space-x-4">
+                    <Label>解析方法</Label>
+                    <label className="inline-flex items-center space-x-1 text-sm">
+                      <input
+                        type="radio"
+                        checked={ingestMode === "builtin"}
+                        onChange={() =>
+                          updateKb({
+                            ingestion_pipeline: {
+                              ...(kbConfig.ingestion_pipeline || {}),
+                              mode: "builtin",
+                            },
+                          })
+                        }
+                      />
+                      <span>内置</span>
+                    </label>
+                    <label className="inline-flex items-center space-x-1 text-sm">
+                      <input
+                        type="radio"
+                        checked={ingestMode === "custom"}
+                        onChange={() =>
+                          updateKb({
+                            ingestion_pipeline: {
+                              ...(kbConfig.ingestion_pipeline || {}),
+                              mode: "custom",
+                            },
+                          })
+                        }
+                      />
+                      <span>选择 pipeline</span>
+                    </label>
+                  </div>
                   <div className="flex items-center space-x-3">
                     <Label>启用内置 Pipeline</Label>
                     <Switch
@@ -438,39 +473,48 @@ const KnowledgeBaseDetail: React.FC = () => {
                       }
                     />
                   </div>
+                  {ingestMode === "builtin" && (
                   <div>
                     <Label>内置模板</Label>
                     <Select
                       value={kbConfig.ingestion_pipeline?.template || "general"}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const t = e.target.value;
+                        const useLayout = ["manual","table","paper"].includes(t);
+                        const useYolo = t === "picture";
+                        const useVlm = useLayout || useYolo;
                         updateKb({
                           ingestion_pipeline: {
                             ...(kbConfig.ingestion_pipeline || {}),
-                            template: e.target.value,
+                            template: t,
+                            layoutlm_enabled: useLayout,
+                            yolo_enabled: useYolo,
+                            vlm_enabled: useVlm,
                           },
-                        })
-                      }
+                        });
+                      }}
                     >
-                      {[
-                        "general",
-                        "qna",
-                        "resume",
-                        "manual",
-                        "table",
-                        "paper",
-                        "book",
-                        "laws",
-                        "presentation",
-                        "picture",
-                        "one",
-                        "tag",
-                      ].map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
+                      {["general","qna","manual","table","paper","picture"].map((t) => (
+                        <option key={t} value={t}>{t}</option>
                       ))}
                     </Select>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {(() => {
+                        const tpl = kbConfig.ingestion_pipeline?.template || "general";
+                        const hint: Record<string,string> = {
+                          general: "通用解析，无强制视觉组件",
+                          qna: "问答优化，无强制视觉组件",
+                          manual: "默认启用 LayoutLM（版面理解）",
+                          table: "默认启用 LayoutLM（表格结构提取）",
+                          paper: "默认启用 LayoutLM（提升公式/表格/段落识别）",
+                          picture: "默认启用 YOLO（版面目标检测）",
+                        };
+                        return hint[tpl];
+                      })()}
+                    </div>
                   </div>
+                  )}
+
                   <div className="flex items-center space-x-3">
                     <Label>语义分块</Label>
                     <Switch
@@ -479,13 +523,26 @@ const KnowledgeBaseDetail: React.FC = () => {
                         updateKb({
                           ingestion_pipeline: {
                             ...(kbConfig.ingestion_pipeline || {}),
-                            semantic_chunking: !!(e.target as HTMLInputElement)
-                              .checked,
+                            semantic_chunking: !!(e.target as HTMLInputElement).checked,
                           },
                         })
                       }
                     />
                   </div>
+
+                  <div>
+                    <Label>PDF 解析器</Label>
+                    <Select
+                      value={kbConfig.ingestion_pipeline?.pdf_parser || "DeepDOC"}
+                      onChange={(e)=> updateKb({ ingestion_pipeline: { ...(kbConfig.ingestion_pipeline||{}), pdf_parser: e.target.value } })}
+                    >
+                      {["DeepDOC","PyMuPDF","PDFMiner","Unstructured"].map((p)=> (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </Select>
+                    <div className="text-xs text-muted-foreground mt-1">不同模板将结合解析器与默认视觉能力以获得更好效果</div>
+                  </div>
+
                   <div className="flex items-center space-x-3">
                     <Label>解析去噪</Label>
                     <Switch
@@ -494,13 +551,13 @@ const KnowledgeBaseDetail: React.FC = () => {
                         updateKb({
                           ingestion_pipeline: {
                             ...(kbConfig.ingestion_pipeline || {}),
-                            parser_denoise: !!(e.target as HTMLInputElement)
-                              .checked,
+                            parser_denoise: !!(e.target as HTMLInputElement).checked,
                           },
                         })
                       }
                     />
                   </div>
+
                   <div className="flex items-center space-x-3">
                     <Label>启用多模态</Label>
                     <Switch
@@ -509,21 +566,18 @@ const KnowledgeBaseDetail: React.FC = () => {
                         updateKb({
                           ingestion_pipeline: {
                             ...(kbConfig.ingestion_pipeline || {}),
-                            vlm_enabled: !!(e.target as HTMLInputElement)
-                              .checked,
+                            vlm_enabled: !!(e.target as HTMLInputElement).checked,
                           },
                         })
                       }
                     />
                   </div>
+
                   <div>
                     <Label>视觉提供方</Label>
-                    <Input
-                      value={
-                        kbConfig.ingestion_pipeline?.vision_provider ||
-                        runtime.vision_provider ||
-                        ""
-                      }
+                    <Select
+                      value={kbConfig.ingestion_pipeline?.vision_provider || runtime.vision_provider || "dashscope"}
+                      disabled={!kbConfig.ingestion_pipeline?.vlm_enabled}
                       onChange={(e) =>
                         updateKb({
                           ingestion_pipeline: {
@@ -532,54 +586,24 @@ const KnowledgeBaseDetail: React.FC = () => {
                           },
                         })
                       }
-                    />
+                    >
+                      {["dashscope","openai","gemini","ark","ollama"].map((v)=>(
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </Select>
+                    <div className="text-xs text-muted-foreground mt-1">选择用于视觉理解的提供方（VLM）</div>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <Label>LayoutLM</Label>
-                    <Switch
-                      checked={!!kbConfig.ingestion_pipeline?.layoutlm_enabled}
-                      onChange={(e) =>
-                        updateKb({
-                          ingestion_pipeline: {
-                            ...(kbConfig.ingestion_pipeline || {}),
-                            layoutlm_enabled: !!(e.target as HTMLInputElement)
-                              .checked,
-                          },
-                        })
-                      }
-                    />
+
+                  <div className="rounded-md border border-border p-3 space-y-1">
+                    <div className="text-xs text-muted-foreground">
+                      默认视觉能力：
+                      {kbConfig.ingestion_pipeline?.layoutlm_enabled ? "LayoutLM已启用；" : ""}
+                      {kbConfig.ingestion_pipeline?.yolo_enabled ? "YOLO已启用；" : ""}
+                      {!(kbConfig.ingestion_pipeline?.layoutlm_enabled || kbConfig.ingestion_pipeline?.yolo_enabled) ? "未启用视觉模块（基于模板）" : ""}
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <Label>YOLO</Label>
-                    <Switch
-                      checked={!!kbConfig.ingestion_pipeline?.yolo_enabled}
-                      onChange={(e) =>
-                        updateKb({
-                          ingestion_pipeline: {
-                            ...(kbConfig.ingestion_pipeline || {}),
-                            yolo_enabled: !!(e.target as HTMLInputElement)
-                              .checked,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label>选择 Pipeline</Label>
-                    <Input
-                      value={
-                        kbConfig.ingestion_pipeline?.selected_pipeline || ""
-                      }
-                      onChange={(e) =>
-                        updateKb({
-                          ingestion_pipeline: {
-                            ...(kbConfig.ingestion_pipeline || {}),
-                            selected_pipeline: e.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </div>
+
+                  {/* 当前系统不支持用户自定义 pipeline，已移除该配置 */}
                 </div>
               </CardContent>
             </Card>
