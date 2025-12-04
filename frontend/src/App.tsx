@@ -7,20 +7,28 @@ import VectorStorePage from "./pages/VectorStorePage";
 import SettingsPage from "./pages/SettingsPage";
 import SystemStatusPage from "./pages/SystemStatusPage";
 import UsageDashboard from "./pages/UsageDashboard";
+import IngestPage from "./pages/IngestPage";
+import FilesManagerPage from "./pages/FilesManagerPage";
+import KnowledgeBasesPage from "./pages/KnowledgeBasesPage";
+import KnowledgeBaseDetail from "./pages/KnowledgeBaseDetail";
 
 function App() {
   return (
     <Router>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<ChatPage />} />
-          <Route path="/documents" element={<DocumentsPage />} />
-          <Route path="/vector-store" element={<VectorStorePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/status" element={<SystemStatusPage />} />
-          <Route path="/usage" element={<UsageDashboard />} />
-        </Routes>
-      </Layout>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<ChatPage />} />
+          <Route path="documents" element={<DocumentsPage />} />
+          <Route path="search" element={<VectorStorePage />} />
+          <Route path="ingest" element={<IngestPage />} />
+          <Route path="files" element={<FilesManagerPage />} />
+          <Route path="kb" element={<KnowledgeBasesPage />} />
+          <Route path="kb/:name" element={<KnowledgeBaseDetail />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="status" element={<SystemStatusPage />} />
+          <Route path="usage" element={<UsageDashboard />} />
+        </Route>
+      </Routes>
     </Router>
   );
 }

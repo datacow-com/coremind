@@ -1,78 +1,56 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
-import {
-  MessageSquare,
-  FileText,
-  Settings,
-  Database,
-  Search,
-  Activity,
-} from "lucide-react";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import { MessageSquare, Database, Search, FolderGit2 } from "lucide-react";
 
-interface LayoutProps {
-  children: React.ReactNode;
-}
-
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC = () => {
   const location = useLocation();
 
   const navigation = [
-    { name: "Chat", href: "/", icon: MessageSquare },
-    { name: "Documents", href: "/documents", icon: FileText },
-    { name: "Vector Store", href: "/vector-store", icon: Database },
-    { name: "Settings", href: "/settings", icon: Settings },
-    { name: "Status", href: "/status", icon: Activity },
-    { name: "Usage", href: "/usage", icon: Activity },
+    { name: "聊天", href: "/", icon: MessageSquare },
+    { name: "知识库", href: "/kb", icon: Database },
+    { name: "搜索", href: "/search", icon: Database },
+    { name: "文件管理", href: "/files", icon: FolderGit2 },
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <div className="w-64 bg-white shadow-sm">
-        <div className="p-6">
+    <div className="flex h-screen bg-background text-foreground">
+      <header className="w-full border-b bg-white">
+        <div className="max-w-screen-xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Search className="h-5 w-5 text-white" />
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <Search className="h-5 w-5 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold text-gray-900">OmniRAG</h1>
+            <span className="text-lg font-semibold">OmniRAG</span>
           </div>
-        </div>
-
-        <nav className="mt-6">
-          <ul className="space-y-2 px-3">
+          <nav className="flex items-center space-x-1">
             {navigation.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.href;
-
+              const isActive =
+                location.pathname === item.href ||
+                location.pathname.startsWith(`${item.href}/`);
               return (
-                <li key={item.name}>
-                  <Link
-                    to={item.href}
-                    className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-blue-50 text-blue-700 border-r-2 border-blue-700"
-                        : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span>{item.name}</span>
-                  </Link>
-                </li>
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm ${
+                    isActive
+                      ? "text-primary bg-muted"
+                      : "text-gray-700 hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{item.name}</span>
+                </Link>
               );
             })}
-          </ul>
-        </nav>
-
-        <div className="mt-auto p-6">
-          <div className="text-xs text-gray-500">
-            <p>Powered by LangGraph</p>
-            <p className="mt-1">Visual PDF Parsing</p>
-          </div>
+          </nav>
         </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">{children}</div>
+      </header>
+      <main className="flex-1 overflow-auto h-[calc(100vh-56px)]">
+        <div className="max-w-screen-xl mx-auto px-6 py-6 h-full">
+          <Outlet />
+        </div>
+      </main>
     </div>
   );
 };
