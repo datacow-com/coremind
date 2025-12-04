@@ -426,61 +426,13 @@ const KnowledgeBaseDetail: React.FC = () => {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 gap-4">
-                  <div className="flex items-center space-x-4">
-                    <Label>解析方法</Label>
-                    <label className="inline-flex items-center space-x-1 text-sm">
-                      <input
-                        type="radio"
-                        checked={ingestMode === "builtin"}
-                        onChange={() =>
-                          updateKb({
-                            ingestion_pipeline: {
-                              ...(kbConfig.ingestion_pipeline || {}),
-                              mode: "builtin",
-                            },
-                          })
-                        }
-                      />
-                      <span>内置</span>
-                    </label>
-                    <label className="inline-flex items-center space-x-1 text-sm">
-                      <input
-                        type="radio"
-                        checked={ingestMode === "custom"}
-                        onChange={() =>
-                          updateKb({
-                            ingestion_pipeline: {
-                              ...(kbConfig.ingestion_pipeline || {}),
-                              mode: "custom",
-                            },
-                          })
-                        }
-                      />
-                      <span>选择 pipeline</span>
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Label>启用内置 Pipeline</Label>
-                    <Switch
-                      checked={kbConfig.ingestion_pipeline?.enabled ?? true}
-                      onChange={(e) =>
-                        updateKb({
-                          ingestion_pipeline: {
-                            ...(kbConfig.ingestion_pipeline || {}),
-                            enabled: !!(e.target as HTMLInputElement).checked,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                  {ingestMode === "builtin" && (
                   <div>
                     <Label>内置模板</Label>
                     <Select
-                      value={kbConfig.ingestion_pipeline?.template || "general"}
+                      value={kbConfig.ingestion_pipeline?.template || "naive"}
                       onChange={(e) => {
                         const t = e.target.value;
-                        const useLayout = ["manual","table","paper"].includes(t);
+                        const useLayout = ["naive","manual","paper","book","laws","presentation"].includes(t);
                         const useYolo = t === "picture";
                         const useVlm = useLayout || useYolo;
                         updateKb({
@@ -494,26 +446,34 @@ const KnowledgeBaseDetail: React.FC = () => {
                         });
                       }}
                     >
-                      {["general","qna","manual","table","paper","picture"].map((t) => (
+                      {["naive","qa","manual","table","paper","book","laws","presentation","picture","resume","one","tag","audio","email","knowledge_graph"].map((t) => (
                         <option key={t} value={t}>{t}</option>
                       ))}
                     </Select>
                     <div className="text-xs text-muted-foreground mt-1">
                       {(() => {
-                        const tpl = kbConfig.ingestion_pipeline?.template || "general";
+                        const tpl = kbConfig.ingestion_pipeline?.template || "naive";
                         const hint: Record<string,string> = {
-                          general: "通用解析，无强制视觉组件",
-                          qna: "问答优化，无强制视觉组件",
+                          naive: "通用解析，结合解析器；默认可能启用 LayoutLM",
+                          qa: "问答优化，无强制视觉组件",
                           manual: "默认启用 LayoutLM（版面理解）",
-                          table: "默认启用 LayoutLM（表格结构提取）",
+                          table: "表格处理，视情况启用表格转 HTML",
                           paper: "默认启用 LayoutLM（提升公式/表格/段落识别）",
+                          book: "默认启用 LayoutLM（长文档）",
+                          laws: "默认启用 LayoutLM（法条格式）",
+                          presentation: "默认启用 LayoutLM（版面/条目识别）",
                           picture: "默认启用 YOLO（版面目标检测）",
+                          resume: "简历解析，可配关键词/问题提取",
+                          one: "单页文档解析",
+                          tag: "标签抽取",
+                          audio: "语音转文本后解析",
+                          email: "邮件解析",
+                          knowledge_graph: "结构化实体关系提取",
                         };
                         return hint[tpl];
                       })()}
                     </div>
                   </div>
-                  )}
 
                   <div className="flex items-center space-x-3">
                     <Label>语义分块</Label>
@@ -530,6 +490,7 @@ const KnowledgeBaseDetail: React.FC = () => {
                     />
                   </div>
 
+                  {(["naive","manual","paper","book","laws","presentation"].includes(kbConfig.ingestion_pipeline?.template || "naive")) && (
                   <div>
                     <Label>PDF 解析器</Label>
                     <Select
@@ -540,8 +501,9 @@ const KnowledgeBaseDetail: React.FC = () => {
                         <option key={p} value={p}>{p}</option>
                       ))}
                     </Select>
-                    <div className="text-xs text-muted-foreground mt-1">不同模板将结合解析器与默认视觉能力以获得更好效果</div>
+                    <div className="text-xs text-muted-foreground mt-1">模板需要版面解析时显示 PDF 解析器选择</div>
                   </div>
+                  )}
 
                   <div className="flex items-center space-x-3">
                     <Label>解析去噪</Label>
@@ -557,6 +519,94 @@ const KnowledgeBaseDetail: React.FC = () => {
                       }
                     />
                   </div>
+
+                  <div>
+                    <Label>建议文本块大小</Label>
+                    <Input
+                      type="number"
+                      value={kbConfig.ingestion_pipeline?.chunk_size ?? 512}
+                      onChange={(e) =>
+                        updateKb({
+                          ingestion_pipeline: {
+                            ...(kbConfig.ingestion_pipeline || {}),
+                            chunk_size: parseInt(e.target.value || "512"),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>文本分段标识符</Label>
+                    <Input
+                      value={kbConfig.ingestion_pipeline?.split_separator ?? "\n"}
+                      onChange={(e) =>
+                        updateKb({
+                          ingestion_pipeline: {
+                            ...(kbConfig.ingestion_pipeline || {}),
+                            split_separator: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Label>TOC Enhance</Label>
+                    <Switch
+                      checked={!!kbConfig.ingestion_pipeline?.toc_enhance}
+                      onChange={(e) =>
+                        updateKb({
+                          ingestion_pipeline: {
+                            ...(kbConfig.ingestion_pipeline || {}),
+                            toc_enhance: !!(e.target as HTMLInputElement).checked,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Label>自动关键词提取</Label>
+                    <Switch
+                      checked={!!kbConfig.ingestion_pipeline?.auto_keywords}
+                      onChange={(e) =>
+                        updateKb({
+                          ingestion_pipeline: {
+                            ...(kbConfig.ingestion_pipeline || {}),
+                            auto_keywords: !!(e.target as HTMLInputElement).checked,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Label>自动问题提取</Label>
+                    <Switch
+                      checked={!!kbConfig.ingestion_pipeline?.auto_questions}
+                      onChange={(e) =>
+                        updateKb({
+                          ingestion_pipeline: {
+                            ...(kbConfig.ingestion_pipeline || {}),
+                            auto_questions: !!(e.target as HTMLInputElement).checked,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  {((kbConfig.ingestion_pipeline?.template || "naive") === "table") && (
+                  <div className="flex items-center space-x-3">
+                    <Label>表格转HTML</Label>
+                    <Switch
+                      checked={!!kbConfig.ingestion_pipeline?.table_to_html}
+                      onChange={(e) =>
+                        updateKb({
+                          ingestion_pipeline: {
+                            ...(kbConfig.ingestion_pipeline || {}),
+                            table_to_html: !!(e.target as HTMLInputElement).checked,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  )}
 
                   <div className="flex items-center space-x-3">
                     <Label>启用多模态</Label>
