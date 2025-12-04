@@ -13,7 +13,7 @@ const Layout: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <div className="flex flex-col h-screen bg-background text-foreground">
       <header className="w-full border-b bg-white">
         <div className="max-w-screen-xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center space-x-3">
