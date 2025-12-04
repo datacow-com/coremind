@@ -27,6 +27,7 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="status" element={<SystemStatusPage />} />
           <Route path="usage" element={<UsageDashboard />} />
+          <Route path="*" element={<ChatPage />} />
         </Route>
       </Routes>
     </Router>
