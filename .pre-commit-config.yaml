@@ -32,6 +32,13 @@ repos:
         pass_filenames: false
   - repo: local
     hooks:
+      - id: python-syntax-compile
+        name: python-syntax-compile
+        entry: bash -lc 'python -m py_compile "$@"'
+        language: system
+        files: ^(core|server)/.+\.py$
+        pass_filenames: true
+      
       - id: frontend-eslint
         name: frontend-eslint
         entry: bash -lc 'cd frontend && npm run lint'

@@ -289,7 +289,7 @@ const KnowledgeBaseDetail: React.FC = () => {
 
             <Card>
               <CardHeader>
-                <CardTitle>全局索引</CardTitle>
+                <CardTitle>检索参数</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 gap-4">
@@ -415,6 +415,65 @@ const KnowledgeBaseDetail: React.FC = () => {
                         </option>
                       ))}
                     </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>全局索引</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <Label>提取知识图谱</Label>
+                    <Input value={kbConfig.global_index?.status || "未生成"} readOnly />
+                  </div>
+                  <div>
+                    <Label requiredMark>实体类型</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["organization","person","geo","event","category"] as const).map((et) => {
+                        const list = kbConfig.global_index?.entity_types || [];
+                        const active = list.includes(et);
+                        return (
+                          <button
+                            key={et}
+                            className={`px-2 py-1 rounded-md text-sm ${active ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}
+                            onClick={() => {
+                              const next = active ? list.filter((x)=> x!==et) : [...list, et];
+                              updateKb({ global_index: { ...(kbConfig.global_index||{}), entity_types: next } });
+                            }}
+                          >
+                            {et}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <Label>方法</Label>
+                    <Select
+                      value={kbConfig.global_index?.method || "Light"}
+                      onChange={(e)=> updateKb({ global_index: { ...(kbConfig.global_index||{}), method: e.target.value } })}
+                    >
+                      <option value="Light">Light</option>
+                      <option value="Standard">Standard</option>
+                    </Select>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Label>实体归一化</Label>
+                    <Switch
+                      checked={!!kbConfig.global_index?.entity_normalize}
+                      onChange={(e)=> updateKb({ global_index: { ...(kbConfig.global_index||{}), entity_normalize: !!(e.target as HTMLInputElement).checked } })}
+                    />
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Label>社区报告生成</Label>
+                    <Switch
+                      checked={!!kbConfig.global_index?.community_report}
+                      onChange={(e)=> updateKb({ global_index: { ...(kbConfig.global_index||{}), community_report: !!(e.target as HTMLInputElement).checked } })}
+                    />
                   </div>
                 </div>
               </CardContent>
