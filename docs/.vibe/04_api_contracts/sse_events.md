@@ -1,6 +1,7 @@
 目的：确保前后端交互的流畅性，让用户看到 Agent 的思考过程。
 code
 Markdown
+
 # Server-Sent Events (SSE) Protocol
 
 Endpoint: `POST /api/chat/stream`
@@ -8,17 +9,19 @@ Endpoint: `POST /api/chat/stream`
 ## Event Types
 
 ### 1. `event: metadata`
+
 在对话开始时发送，包含 Trace ID。
+
 ```json
 { "trace_id": "uuid-...", "model": "gemini-1.5-pro" }
 2. event: thought (Agent Thinking)
 用于展示 LangGraph 的中间步骤。
 code
 JSON
-{ 
-  "node": "web_search", 
-  "status": "running", 
-  "description": "Searching Google for 'latest RAG architecture'..." 
+{
+  "node": "web_search",
+  "status": "running",
+  "description": "Searching Google for 'latest RAG architecture'..."
 }
 3. event: citation (High Value)
 当定位到具体文档时发送。
@@ -65,3 +68,4 @@ Code
 *   **文档即测试**：在后期，可以让 AI 根据 `.vibe/03_core_innovation/` 中的算法描述，自动生成单元测试用例（Test Case），验证代码是否偏离了设计初衷。
 *   **新同事 Onboarding**：这套文档不仅给 AI 看，也是人类开发者的最佳入职指南，实现了“人机共阅”。
 *   **版本控制**：当系统升级（例如从 MVP 到 V2），只需修改 `.vibe` 下的 Markdown 文件，AI 在下一次 Coding Session 中就会自动适应新架构。
+```

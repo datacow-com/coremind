@@ -31,6 +31,7 @@ graph TD
 ```
 
 ## 2. 技术栈
+
 - **前端**: React@18 + TypeScript + Ant Design@5 + Vite
 - **初始化工具**: vite-init
 - **后端**: FastAPI@0.104 + Python@3.11
@@ -39,22 +40,24 @@ graph TD
 - **部署**: Docker + Nginx
 
 ## 3. 路由定义
-| 路由 | 用途 |
-|------|------|
-| / | 登录页，用户认证入口 |
-| /dashboard | 监控仪表页，模型性能总览 |
-| /models | 模型配置页，双栈模型管理 |
-| /models/:id/edit | 模型编辑页，详细配置 |
-| /tasks | 任务绑定页，任务模型映射 |
-| /environments | 环境管理页，多环境配置 |
-| /audit | 审计日志页，操作记录查询 |
-| /api/health | 健康检查接口 |
+
+| 路由             | 用途                     |
+| ---------------- | ------------------------ |
+| /                | 登录页，用户认证入口     |
+| /dashboard       | 监控仪表页，模型性能总览 |
+| /models          | 模型配置页，双栈模型管理 |
+| /models/:id/edit | 模型编辑页，详细配置     |
+| /tasks           | 任务绑定页，任务模型映射 |
+| /environments    | 环境管理页，多环境配置   |
+| /audit           | 审计日志页，操作记录查询 |
+| /api/health      | 健康检查接口             |
 
 ## 4. API定义
 
 ### 4.1 模型管理API
 
 **获取模型列表**
+
 ```
 GET /api/models
 ```
@@ -67,6 +70,7 @@ Query参数:
 | environment | string | false | 环境: dev/test/prod |
 
 响应:
+
 ```json
 {
   "code": 200,
@@ -92,11 +96,13 @@ Query参数:
 ```
 
 **创建模型配置**
+
 ```
 POST /api/models
 ```
 
 请求体:
+
 ```json
 {
   "name": "DeepSeek-V2",
@@ -117,11 +123,13 @@ POST /api/models
 ```
 
 **连接测试**
+
 ```
 POST /api/models/:id/test
 ```
 
 响应:
+
 ```json
 {
   "code": 200,
@@ -137,11 +145,13 @@ POST /api/models/:id/test
 ### 4.2 任务绑定API
 
 **获取任务绑定**
+
 ```
 GET /api/tasks/:taskId/bindings
 ```
 
 响应:
+
 ```json
 {
   "code": 200,
@@ -173,19 +183,19 @@ graph TD
     E --> H[Model Gateway]
     H --> I[国内模型池]
     H --> J[海外模型池]
-    
+
     subgraph "Controller Layer"
         D
     end
-    
+
     subgraph "Service Layer"
         E
     end
-    
+
     subgraph "Repository Layer"
         F
     end
-    
+
     subgraph "External Models"
         I
         J
@@ -203,7 +213,7 @@ erDiagram
     MODEL ||--o{ AUDIT_LOG : generates
     ENVIRONMENT ||--o{ MODEL_CONFIG : contains
     TASK ||--o{ TASK_BINDING : has_binding
-    
+
     MODEL {
         uuid id PK
         string name
@@ -217,7 +227,7 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
-    
+
     MODEL_METRIC {
         uuid id PK
         uuid model_id FK
@@ -227,7 +237,7 @@ erDiagram
         float quality_score
         timestamp recorded_at
     }
-    
+
     TASK_BINDING {
         uuid id PK
         uuid task_id FK
@@ -237,14 +247,14 @@ erDiagram
         string environment
         timestamp created_at
     }
-    
+
     ENVIRONMENT {
         string name PK
         string description
         boolean is_production
         json config_schema
     }
-    
+
     AUDIT_LOG {
         uuid id PK
         uuid user_id FK
@@ -258,6 +268,7 @@ erDiagram
 ### 6.2 数据定义语言
 
 **模型表 (models)**
+
 ```sql
 -- 创建模型表
 CREATE TABLE models (
@@ -283,6 +294,7 @@ CREATE INDEX idx_models_environment ON models(environment);
 ```
 
 **模型指标表 (model_metrics)**
+
 ```sql
 -- 创建模型指标表
 CREATE TABLE model_metrics (
@@ -301,6 +313,7 @@ CREATE INDEX idx_model_metrics_recorded_at ON model_metrics(recorded_at DESC);
 ```
 
 **任务绑定表 (task_bindings)**
+
 ```sql
 -- 创建任务绑定表
 CREATE TABLE task_bindings (
@@ -322,6 +335,7 @@ CREATE INDEX idx_task_bindings_environment ON task_bindings(environment);
 ```
 
 **审计日志表 (audit_logs)**
+
 ```sql
 -- 创建审计日志表
 CREATE TABLE audit_logs (
@@ -346,11 +360,13 @@ CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
 ## 7. 性能优化策略
 
 ### 7.1 缓存策略
+
 - **模型配置缓存**: Redis缓存模型配置，TTL 5分钟
 - **指标数据缓存**: 热点指标数据缓存，TTL 1分钟
 - **连接池**: 数据库连接池，最大连接数50
 
 ### 7.2 监控指标
+
 - **接口响应时间**: P99 < 500ms
 - **模型连接成功率**: >99%
 - **系统可用性**: >99.9%
@@ -358,11 +374,13 @@ CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
 ## 8. 安全设计
 
 ### 8.1 认证授权
+
 - **JWT Token**: 用户认证使用JWT，有效期24小时
 - **RBAC权限**: 基于角色的访问控制
 - **API限流**: 每分钟最多100次请求
 
 ### 8.2 数据安全
+
 - **敏感信息加密**: API密钥等敏感信息AES加密存储
 - **审计日志**: 所有配置变更记录审计日志
 - **HTTPS**: 全站HTTPS加密传输

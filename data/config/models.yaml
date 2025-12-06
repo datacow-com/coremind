@@ -1,0 +1,35 @@
+models:
+  embedding:
+    - id: "BAAI/bge-m3"
+      name: "BGE M3 (Multilingual)"
+      provider: "local/huggingface"
+      description: "Best for multilingual retrieval"
+    - id: "text-embedding-v3"
+      name: "DashScope Text V3"
+      provider: "dashscope"
+      description: "Alibaba Cloud Qwen Embedding"
+    - id: "text-embedding-ada-002"
+      name: "OpenAI Ada 002"
+      provider: "openai"
+      description: "General purpose embedding"
+    - id: "BAAI/bge-large-zh-v1.5"
+      name: "BGE Large Zh"
+      provider: "local/huggingface"
+      description: "Optimized for Chinese"
+
+  llm:
+    - id: "qwen-plus"
+      name: "Qwen Plus"
+      provider: "dashscope"
+    - id: "gpt-4o-mini"
+      name: "GPT-4o Mini"
+      provider: "openai"
+    - id: "deepseek-chat"
+      name: "DeepSeek Chat"
+      provider: "deepseek"
+
+  reranker:
+    - id: "BAAI/bge-reranker-v2-m3"
+      name: "BGE Reranker V2"
+      provider: "cross_encoder"
+

@@ -1,5 +1,20 @@
 import { useEffect, useState } from "react";
-import { Settings, Save, Key, Database, Globe } from "lucide-react";
+import {
+  Settings,
+  Save,
+  Key,
+  Database,
+  Globe,
+  AlertCircle,
+} from "lucide-react";
+import { z } from "zod";
+import { useFormZod } from "@/hooks/useFormZod";
+import { useToast } from "@/components/ui/toast-provider";
+import { EmptyState } from "@/components/ui/empty";
+import { AlertCard } from "@/components/ui/alert-card";
+import { apiFetch } from "@/lib/api";
+
+const fetch = apiFetch;
 
 interface SettingsState {
   llm: {
@@ -79,6 +94,7 @@ const SettingsPage: React.FC = () => {
   const [keywordWeight, setKeywordWeight] = useState<number>(0.4);
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true);
   const [defaultTopK, setDefaultTopK] = useState<number>(5);
+  const [candidateK, setCandidateK] = useState<number>(50);
   const [rateLimitEnabled, setRateLimitEnabled] = useState<boolean>(false);
   const [rateLimitPerMinute, setRateLimitPerMinute] = useState<number>(60);
   const [heartbeatInterval, setHeartbeatInterval] = useState<number>(0);
@@ -92,6 +108,7 @@ const SettingsPage: React.FC = () => {
     }>
   >([]);
   const [runtime, setRuntime] = useState<Record<string, any>>({});
+  const [runtimeMetrics, setRuntimeMetrics] = useState<Record<string, any>>({});
   const [usageSummary, setUsageSummary] = useState<
     Record<string, { calls: number; tokens: number; duration_ms: number }>
   >({});
@@ -99,6 +116,35 @@ const SettingsPage: React.FC = () => {
     current_provider: string;
     providers: Record<string, { configured: boolean }>;
   } | null>(null);
+  const { push } = useToast();
+
+  const runtimeSchema = z.object({
+    vector_weight: z.number().min(0).max(1),
+    keyword_weight: z.number().min(0).max(1),
+    top_k_default: z.number().int().min(1).max(50),
+    candidate_k: z.number().int().min(1).max(500),
+    web_search_enabled: z.boolean(),
+    rate_limit_enabled: z.boolean(),
+    rate_limit_per_minute: z.number().int().min(1).max(600),
+    sse_heartbeat_interval: z.number().int().min(0).max(120),
+  });
+
+  const runtimeForm = useFormZod(
+    runtimeSchema,
+    {
+      vector_weight: 0.6,
+      keyword_weight: 0.4,
+      top_k_default: 5,
+      candidate_k: 50,
+      web_search_enabled: true,
+      rate_limit_enabled: false,
+      rate_limit_per_minute: 60,
+      sse_heartbeat_interval: 0,
+    },
+    async () => {
+      // defer actual apply to explicit button
+    },
+  );
 
   const fetchRuntime = async () => {
     try {
@@ -106,14 +152,34 @@ const SettingsPage: React.FC = () => {
       if (r.ok) {
         const d = await r.json();
         setRuntime(d);
-        if (typeof d.top_k_default === "number")
-          setDefaultTopK(d.top_k_default);
-        if (typeof d.rate_limit_enabled === "boolean")
-          setRateLimitEnabled(d.rate_limit_enabled);
-        if (typeof d.rate_limit_per_minute === "number")
-          setRateLimitPerMinute(d.rate_limit_per_minute);
-        if (typeof d.sse_heartbeat_interval === "number")
-          setHeartbeatInterval(d.sse_heartbeat_interval);
+        runtimeForm.setValues({
+          vector_weight: d.vector_weight ?? runtimeForm.values.vector_weight,
+          keyword_weight: d.keyword_weight ?? runtimeForm.values.keyword_weight,
+          top_k_default: d.top_k_default ?? runtimeForm.values.top_k_default,
+          candidate_k: d.candidate_k ?? runtimeForm.values.candidate_k,
+          web_search_enabled:
+            d.web_search_enabled ?? runtimeForm.values.web_search_enabled,
+          rate_limit_enabled:
+            d.rate_limit_enabled ?? runtimeForm.values.rate_limit_enabled,
+          rate_limit_per_minute:
+            d.rate_limit_per_minute ?? runtimeForm.values.rate_limit_per_minute,
+          sse_heartbeat_interval:
+            d.sse_heartbeat_interval ??
+            runtimeForm.values.sse_heartbeat_interval,
+        });
+        setDefaultTopK(d.top_k_default ?? 5);
+        setCandidateK(d.candidate_k ?? 50);
+        setRateLimitEnabled(d.rate_limit_enabled ?? false);
+        setRateLimitPerMinute(d.rate_limit_per_minute ?? 60);
+        setHeartbeatInterval(d.sse_heartbeat_interval ?? 0);
+      }
+    } catch {}
+
+    try {
+      const r2 = await fetch("/api/metrics/runtime");
+      if (r2.ok) {
+        const d2 = await r2.json();
+        setRuntimeMetrics(d2.data || d2 || {});
       }
     } catch {}
   };
@@ -128,13 +194,7 @@ const SettingsPage: React.FC = () => {
   useEffect(() => {
     const loadProviders = async () => {
       try {
-        const token = await fetch("/api/auth/demo", { method: "POST" })
-          .then((r) => (r.ok ? r.json() : Promise.reject("auth failed")))
-          .then((d) => d.access_token as string);
-
-        const res = await fetch("/api/models/providers", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch("/api/models/providers");
         if (res.ok) {
           const data = await res.json();
           setProviders(data.config?.providers || []);
@@ -142,15 +202,20 @@ const SettingsPage: React.FC = () => {
           if (data.config?.bindings) setBindings(data.config.bindings);
           const s = data.config?.settings;
           if (s) {
+            runtimeForm.setValues((prev) => ({
+              ...prev,
+              vector_weight: s.vector_weight ?? prev.vector_weight,
+              keyword_weight: s.keyword_weight ?? prev.keyword_weight,
+              web_search_enabled:
+                s.web_search_enabled ?? prev.web_search_enabled,
+            }));
             setVectorWeight(s.vector_weight ?? 0.6);
             setKeywordWeight(s.keyword_weight ?? 0.4);
             setWebSearchEnabled(s.web_search_enabled ?? true);
           }
         }
 
-        const rg = await fetch("/api/models/providers/groups", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const rg = await fetch("/api/models/providers/groups");
         if (rg.ok) {
           const gd = await rg.json();
           setGroups(
@@ -182,6 +247,29 @@ const SettingsPage: React.FC = () => {
     fetchWebProviders();
   }, []);
 
+  const runtimeCards = [
+    {
+      title: "SSE",
+      value: runtimeMetrics.sse_active ?? "-",
+      desc: `active / max ${runtimeMetrics.sse_max_connections ?? "-"}`,
+    },
+    {
+      title: "上传",
+      value: runtimeMetrics.uploads?.ok ?? "-",
+      desc: `拒绝 ${runtimeMetrics.uploads?.rejected ?? 0} / 扫描失败 ${runtimeMetrics.uploads?.scan_fail ?? 0}`,
+    },
+    {
+      title: "限流",
+      value: runtimeMetrics.rate_limit_enabled ? "启用" : "关闭",
+      desc: `backend ${runtimeMetrics.rate_limit_backend || "memory"}`,
+    },
+    {
+      title: "Web 搜索",
+      value: runtimeMetrics.web_search?.enabled ? "启用" : "关闭",
+      desc: runtimeMetrics.web_search?.provider || "未配置",
+    },
+  ];
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -194,22 +282,23 @@ const SettingsPage: React.FC = () => {
           bindings,
           providers,
           settings: {
-            vector_weight: vectorWeight,
-            keyword_weight: keywordWeight,
-            web_search_enabled: webSearchEnabled,
+            vector_weight: runtimeForm.values.vector_weight,
+            keyword_weight: runtimeForm.values.keyword_weight,
+            web_search_enabled: runtimeForm.values.web_search_enabled,
           },
         }),
       });
 
       if (response.ok) {
         setSaveMessage("Settings saved successfully!");
+        push({ title: "已保存", variant: "success" });
         try {
           window.dispatchEvent(
             new CustomEvent("settings:update", {
               detail: {
-                vector_weight: vectorWeight,
-                keyword_weight: keywordWeight,
-                web_search_enabled: webSearchEnabled,
+                vector_weight: runtimeForm.values.vector_weight,
+                keyword_weight: runtimeForm.values.keyword_weight,
+                web_search_enabled: runtimeForm.values.web_search_enabled,
               },
             }),
           );
@@ -217,11 +306,17 @@ const SettingsPage: React.FC = () => {
         setTimeout(() => setSaveMessage(""), 3000);
       } else {
         setSaveMessage("Failed to save settings");
+        push({
+          title: "保存失败",
+          description: response.statusText,
+          variant: "error",
+        });
         setTimeout(() => setSaveMessage(""), 3000);
       }
     } catch (error) {
       console.error("Error saving settings:", error);
       setSaveMessage("Error saving settings");
+      push({ title: "保存失败", description: "网络错误", variant: "error" });
       setTimeout(() => setSaveMessage(""), 3000);
     } finally {
       setIsSaving(false);
@@ -235,12 +330,13 @@ const SettingsPage: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_temperature: settings.llm.temperature,
-          vector_weight: vectorWeight,
-          keyword_weight: keywordWeight,
-          top_k_default: defaultTopK,
-          rate_limit_enabled: rateLimitEnabled,
-          rate_limit_per_minute: rateLimitPerMinute,
-          sse_heartbeat_interval: heartbeatInterval,
+          vector_weight: runtimeForm.values.vector_weight,
+          keyword_weight: runtimeForm.values.keyword_weight,
+          top_k_default: runtimeForm.values.top_k_default,
+          candidate_k: runtimeForm.values.candidate_k,
+          rate_limit_enabled: runtimeForm.values.rate_limit_enabled,
+          rate_limit_per_minute: runtimeForm.values.rate_limit_per_minute,
+          sse_heartbeat_interval: runtimeForm.values.sse_heartbeat_interval,
         }),
       });
       if (res.ok) {
@@ -248,22 +344,33 @@ const SettingsPage: React.FC = () => {
           window.dispatchEvent(
             new CustomEvent("settings:update", {
               detail: {
-                vector_weight: vectorWeight,
-                keyword_weight: keywordWeight,
+                vector_weight: runtimeForm.values.vector_weight,
+                keyword_weight: runtimeForm.values.keyword_weight,
               },
             }),
           );
         } catch {}
         setSaveMessage("Runtime applied");
+        push({ title: "运行时已应用", variant: "success" });
         await fetchRuntime();
         await fetchWebProviders();
         setTimeout(() => setSaveMessage(""), 2000);
       } else {
         setSaveMessage("Runtime apply failed");
+        push({
+          title: "运行时应用失败",
+          description: res.statusText,
+          variant: "error",
+        });
         setTimeout(() => setSaveMessage(""), 2000);
       }
     } catch {
       setSaveMessage("Runtime apply failed");
+      push({
+        title: "运行时应用失败",
+        description: "网络错误",
+        variant: "error",
+      });
       setTimeout(() => setSaveMessage(""), 2000);
     }
   };
@@ -365,64 +472,71 @@ const SettingsPage: React.FC = () => {
 
           <div className="bg-white border rounded-lg p-6 space-y-4">
             {/* Bindings */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Parse (Vision)
-                </label>
-                <select
-                  value={bindings.parse}
-                  onChange={(e) => updateBinding("parse", e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {providers.map((p) => (
-                    <option key={`parse-${p.name}`} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+            {providers.length === 0 ? (
+              <EmptyState
+                title="暂无可用 Provider"
+                description="请先配置模型提供方后再选择绑定。"
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Parse (Vision)
+                  </label>
+                  <select
+                    value={bindings.parse}
+                    onChange={(e) => updateBinding("parse", e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {providers.map((p) => (
+                      <option key={`parse-${p.name}`} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Chat
+                  </label>
+                  <select
+                    value={bindings.chat}
+                    onChange={(e) => updateBinding("chat", e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {providers.map((p) => (
+                      <option key={`chat-${p.name}`} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Retrieve
+                  </label>
+                  <select
+                    value={bindings.retrieve}
+                    onChange={(e) => updateBinding("retrieve", e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="embedding">embedding</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Rerank
+                  </label>
+                  <select
+                    value={bindings.rerank}
+                    onChange={(e) => updateBinding("rerank", e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="cross_encoder">cross_encoder</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Chat
-                </label>
-                <select
-                  value={bindings.chat}
-                  onChange={(e) => updateBinding("chat", e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {providers.map((p) => (
-                    <option key={`chat-${p.name}`} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Retrieve
-                </label>
-                <select
-                  value={bindings.retrieve}
-                  onChange={(e) => updateBinding("retrieve", e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="embedding">embedding</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Rerank
-                </label>
-                <select
-                  value={bindings.rerank}
-                  onChange={(e) => updateBinding("rerank", e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="cross_encoder">cross_encoder</option>
-                </select>
-              </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -551,15 +665,15 @@ const SettingsPage: React.FC = () => {
                   min={0}
                   max={1}
                   step={0.1}
-                  value={vectorWeight}
-                  onChange={(e) =>
-                    setVectorWeight(
-                      Math.max(
-                        0,
-                        Math.min(1, parseFloat(e.target.value || "0.6")),
-                      ),
-                    )
-                  }
+                  value={runtimeForm.values.vector_weight}
+                  onChange={(e) => {
+                    const v = Math.max(
+                      0,
+                      Math.min(1, parseFloat(e.target.value || "0.6")),
+                    );
+                    runtimeForm.setField("vector_weight", v);
+                    setVectorWeight(v);
+                  }}
                   className="w-20 border rounded px-2 py-1"
                 />
               </div>
@@ -570,15 +684,15 @@ const SettingsPage: React.FC = () => {
                   min={0}
                   max={1}
                   step={0.1}
-                  value={keywordWeight}
-                  onChange={(e) =>
-                    setKeywordWeight(
-                      Math.max(
-                        0,
-                        Math.min(1, parseFloat(e.target.value || "0.4")),
-                      ),
-                    )
-                  }
+                  value={runtimeForm.values.keyword_weight}
+                  onChange={(e) => {
+                    const v = Math.max(
+                      0,
+                      Math.min(1, parseFloat(e.target.value || "0.4")),
+                    );
+                    runtimeForm.setField("keyword_weight", v);
+                    setKeywordWeight(v);
+                  }}
                   className="w-20 border rounded px-2 py-1"
                 />
               </div>
@@ -588,15 +702,15 @@ const SettingsPage: React.FC = () => {
                   type="number"
                   min={1}
                   max={10}
-                  value={defaultTopK}
-                  onChange={(e) =>
-                    setDefaultTopK(
-                      Math.max(
-                        1,
-                        Math.min(10, parseInt(e.target.value || "5")),
-                      ),
-                    )
-                  }
+                  value={runtimeForm.values.top_k_default}
+                  onChange={(e) => {
+                    const v = Math.max(
+                      1,
+                      Math.min(10, parseInt(e.target.value || "5")),
+                    );
+                    runtimeForm.setField("top_k_default", v);
+                    setDefaultTopK(v);
+                  }}
                   className="w-20 border rounded px-2 py-1"
                 />
               </div>
@@ -604,30 +718,42 @@ const SettingsPage: React.FC = () => {
                 <label className="text-sm text-gray-700">Web Search</label>
                 <input
                   type="checkbox"
-                  checked={webSearchEnabled}
-                  onChange={(e) => setWebSearchEnabled(e.target.checked)}
+                  checked={runtimeForm.values.web_search_enabled}
+                  onChange={(e) => {
+                    runtimeForm.setField(
+                      "web_search_enabled",
+                      e.target.checked,
+                    );
+                    setWebSearchEnabled(e.target.checked);
+                  }}
                 />
               </div>
               <div className="flex items-center space-x-2">
                 <label className="text-sm text-gray-700">Rate Limit</label>
                 <input
                   type="checkbox"
-                  checked={rateLimitEnabled}
-                  onChange={(e) => setRateLimitEnabled(e.target.checked)}
+                  checked={runtimeForm.values.rate_limit_enabled}
+                  onChange={(e) => {
+                    runtimeForm.setField(
+                      "rate_limit_enabled",
+                      e.target.checked,
+                    );
+                    setRateLimitEnabled(e.target.checked);
+                  }}
                 />
                 <input
                   type="number"
                   min={1}
                   max={600}
-                  value={rateLimitPerMinute}
-                  onChange={(e) =>
-                    setRateLimitPerMinute(
-                      Math.max(
-                        1,
-                        Math.min(600, parseInt(e.target.value || "60")),
-                      ),
-                    )
-                  }
+                  value={runtimeForm.values.rate_limit_per_minute}
+                  onChange={(e) => {
+                    const v = Math.max(
+                      1,
+                      Math.min(600, parseInt(e.target.value || "60")),
+                    );
+                    runtimeForm.setField("rate_limit_per_minute", v);
+                    setRateLimitPerMinute(v);
+                  }}
                   className="w-24 border rounded px-2 py-1"
                 />
               </div>
@@ -637,15 +763,15 @@ const SettingsPage: React.FC = () => {
                   type="number"
                   min={0}
                   max={120}
-                  value={heartbeatInterval}
-                  onChange={(e) =>
-                    setHeartbeatInterval(
-                      Math.max(
-                        0,
-                        Math.min(120, parseInt(e.target.value || "0")),
-                      ),
-                    )
-                  }
+                  value={runtimeForm.values.sse_heartbeat_interval}
+                  onChange={(e) => {
+                    const v = Math.max(
+                      0,
+                      Math.min(120, parseInt(e.target.value || "0")),
+                    );
+                    runtimeForm.setField("sse_heartbeat_interval", v);
+                    setHeartbeatInterval(v);
+                  }}
                   className="w-24 border rounded px-2 py-1"
                 />
               </div>
@@ -661,6 +787,43 @@ const SettingsPage: React.FC = () => {
                 Apply Runtime
               </button>
             </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <label className="text-sm text-gray-700">Candidate-K</label>
+            <input
+              type="number"
+              min={10}
+              max={200}
+              value={runtimeForm.values.candidate_k}
+              onChange={(e) => {
+                const v = Math.max(
+                  10,
+                  Math.min(200, parseInt(e.target.value || "50")),
+                );
+                runtimeForm.setField("candidate_k", v);
+                setCandidateK(v);
+              }}
+              className="w-24 border rounded px-2 py-1"
+            />
+          </div>
+        </div>
+
+        {/* Runtime Metrics */}
+        <div className="mb-8">
+          <div className="flex items-center space-x-2 mb-4">
+            <Activity className="h-5 w-5 text-blue-600" />
+            <h3 className="text-md font-medium text-gray-900">运行态仪表</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {runtimeCards.map((c) => (
+              <div key={c.title} className="bg-white border rounded-lg p-4">
+                <div className="text-xs text-gray-500 mb-1">{c.title}</div>
+                <div className="text-lg font-semibold text-gray-900">
+                  {c.value}
+                </div>
+                <div className="text-xs text-gray-500">{c.desc}</div>
+              </div>
+            ))}
           </div>
         </div>
 

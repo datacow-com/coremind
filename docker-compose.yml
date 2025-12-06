@@ -22,10 +22,12 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Milvus Vector Database
+  # Milvus Vector Database (Legacy/Optional)
   milvus:
     image: milvusdb/milvus:v2.3.3
     command: ["milvus", "run", "standalone"]
+    profiles:
+      - milvus
     environment:
       ETCD_USE_EMBED: "true"
       ETCD_DATA_DIR: "/var/lib/milvus/etcd"
@@ -40,15 +42,132 @@ services:
       - omnirag_network
     restart: unless-stopped
 
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "3507:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - omnirag_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # Qdrant Vector Database (Default)
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "3508:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - omnirag_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "3509:6379"
+    networks:
+      - omnirag_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "3510:9000"
+      - "3511:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    networks:
+      - omnirag_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # Infinity Embedding Server
+  infinity:
+    image: michaelf34/infinity:latest
+    ports:
+      - "3512:7997"
+    environment:
+      - MODEL_ID=${EMBEDDING_MODEL:-BAAI/bge-m3}
+    volumes:
+      - ./models:/models
+    networks:
+      - omnirag_network
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:7997/health"]
+    #   interval: 30s
+    #   timeout: 20s
+    #   retries: 3
+    restart: unless-stopped
+
   # Backend API
   backend:
     build:
       context: .
       dockerfile: server/Dockerfile
     environment:
+      - APP_ENV=prod
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-1234567890123}
       - DATABASE_URL=postgresql://omnirag:omnirag_password@postgres:5432/omnirag
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET=omnirag
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_INDEX=omnirag_chunks
+      - KEYWORD_BACKEND=elasticsearch
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=omnirag_chunks
+      - VECTOR_BACKEND=qdrant
+      - FORCE_VECTOR_BACKEND=qdrant
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-m3}
+      - LLM_PROVIDER=${LLM_PROVIDER:-dashscope}
+      - DASHSCOPE_CHAT_MODEL=${DASHSCOPE_CHAT_MODEL:-qwen-plus}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - DASHSCOPE_COMPAT_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+      - RERANKER_PROVIDER=cross_encoder
+      - RERANKER_MODEL=${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      - RATE_LIMIT_ENABLED=true
+      - WEB_SEARCH_PROVIDER=duckduckgo
+      - UPLOADS_DIR=/app/uploads
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -57,13 +176,23 @@ services:
       - "3503:8000"
     depends_on:
       - postgres
-      - milvus
+      - qdrant
+      - elasticsearch
+      - redis
+      - minio
+      - infinity
     volumes:
       - ./uploads:/app/uploads
     networks:
       - omnirag_network
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx,sys; sys.exit(0 if httpx.get('http://localhost:8000/api/health', timeout=5).status_code==200 else 1)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import httpx,sys; sys.exit(0 if httpx.get('http://localhost:8000/api/health', timeout=5).status_code==200 else 1)",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -82,6 +211,12 @@ services:
     networks:
       - omnirag_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # Nginx Reverse Proxy
   nginx:
@@ -103,6 +238,9 @@ services:
 volumes:
   postgres_data:
   milvus_data:
+  es_data:
+  qdrant_data:
+  minio_data:
 
 networks:
   omnirag_network:

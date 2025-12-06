@@ -1,0 +1,16 @@
+[rules]
+  [[rules.allowlist]]
+    description = "Allow common test tokens"
+    regexes = ["^test_[a-zA-Z0-9]{8,}$"]
+
+  [[rules.regexes]]
+    description = "AWS Access Key ID"
+    regex = "AKIA[0-9A-Z]{16}"
+
+  [[rules.regexes]]
+    description = "Google API Key"
+    regex = "AIza[0-9A-Za-z\-_]{35}"
+
+  [[rules.regexes]]
+    description = "Slack token"
+    regex = "xox[baprs]-[0-9A-Za-z\-]{10,}"

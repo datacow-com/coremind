@@ -22,7 +22,10 @@ async def hallucination(state: RAGState) -> dict:
             score = 0.5
     except Exception:
         score = 0.5
-    thr = float(settings.hallucination_threshold)
+    try:
+        thr = float((state.get("metadata") or {}).get("hallucination_threshold"))
+    except Exception:
+        thr = float(settings.hallucination_threshold)
     hallucination_detected = bool(score < thr)
     return {
         "hallucination_score": float(score),

@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 from langgraph.graph import END, StateGraph
 
@@ -11,10 +12,11 @@ from core.nodes.route import route
 from core.nodes.web_search import web_search
 from core.state import RAGState
 
+_PostgresSaver: Any | None = None
 try:
-    from langgraph.checkpoint.postgres import PostgresSaver
+    from langgraph.checkpoint.postgres import PostgresSaver as _PostgresSaver
 except Exception:
-    PostgresSaver = None
+    _PostgresSaver = None
 
 
 def create_graph():
@@ -63,11 +65,11 @@ def create_graph():
     graph.add_edge("hallucination", END)
 
     checkpointer = None
-    if PostgresSaver is not None:
+    if _PostgresSaver is not None:
         db_url = os.environ.get("DATABASE_URL")
         if db_url:
             try:
-                checkpointer = PostgresSaver.from_conn_string(db_url)
+                checkpointer = _PostgresSaver.from_conn_string(db_url)
             except Exception:
                 checkpointer = None
     if checkpointer is not None:

@@ -15,11 +15,11 @@ class ImageIngestState(TypedDict):
 async def images_to_md(state: ImageIngestState) -> ImageIngestState:
     import os
 
-    from core.embedding.provider_embedder import Embedder
+    from core.embedding.registry import get_embedder
     from core.llm.gateway import LLMGateway
     from core.storage.index_router import add as index_add
 
-    gw = LLMGateway(provider=os.environ.get("VISION_PROVIDER", "dashscope"))
+    gw = LLMGateway(model=os.environ.get("VISION_MODEL"))
     prompt = "Extract structured Markdown with headings, lists, tables and preserve reading order."
     parts: list[str] = []
     for fp in state.get("file_paths", []):
@@ -31,22 +31,33 @@ async def images_to_md(state: ImageIngestState) -> ImageIngestState:
                 parts.append(md)
                 # write chunks to index
                 paras = [p.strip() for p in md.split("\n\n") if p.strip()]
-                emb = Embedder(dim=256)
+                emb = get_embedder(model_name=os.environ.get("EMBEDDING_MODEL"))
                 from core.storage.keyword_index import get_keyword_index
 
                 kw = get_keyword_index()
-                for i, chunk in enumerate(paras):
-                    vec = emb.embed(chunk)
-                    meta = {
-                        "id": f"{fp}-chunk-{i}",
-                        "content": chunk,
-                        "page_num": 1,
-                        "doc_id": fp,
-                        "chunk_index": i,
-                        "metadata": {"type": "image", "bbox": None, "confidence": 0.0},
-                    }
-                    index_add(vec, meta)
-                    kw.add(chunk, meta)
+                if paras:
+                    try:
+                        vecs = await emb.embed_batch(paras) if hasattr(emb, "embed_batch") else None
+                    except Exception:
+                        vecs = None
+                    for i, chunk in enumerate(paras):
+                        import asyncio
+
+                        vec = None
+                        if vecs is not None and len(vecs) > i:
+                            vec = vecs[i]
+                        else:
+                            vec = await asyncio.to_thread(emb.embed, chunk)
+                        meta = {
+                            "id": f"{fp}-chunk-{i}",
+                            "content": chunk,
+                            "page_num": 1,
+                            "doc_id": fp or "image",
+                            "chunk_index": i,
+                            "metadata": {"type": "image", "bbox": None, "confidence": 0.0},
+                        }
+                        index_add(vec, meta)
+                        kw.add(chunk, meta)
         except Exception:
             continue
     state["md"] = "\n\n".join(parts) if parts else (state.get("md") or "")

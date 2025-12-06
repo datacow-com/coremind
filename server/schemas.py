@@ -1,13 +1,9 @@
-from pydantic import BaseModel, Field
-
-try:
-    from pydantic import ConfigDict
-except Exception:
-    ConfigDict = None
 from datetime import datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StackType(str, Enum):
@@ -60,7 +56,7 @@ class ModelCreate(BaseModel):
         default_factory=lambda: AuthConfig(type="none"), description="Authentication configuration"
     )
     parameters: ModelParameters = Field(
-        default_factory=ModelParameters, description="Model parameters"
+        default_factory=lambda: ModelParameters(), description="Model parameters"
     )
     priority: int = Field(1, ge=1, le=100, description="Priority level")
     status: ModelStatus = Field(ModelStatus.ACTIVE, description="Model status")
@@ -93,8 +89,7 @@ class ModelResponse(BaseModel):
     created_at: datetime
     updated_at: datetime | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ModelMetrics(BaseModel):
@@ -103,13 +98,15 @@ class ModelMetrics(BaseModel):
     error_rate: float = Field(..., ge=0.0, le=1.0, description="Error rate")
     quality_score: float = Field(..., ge=0.0, le=1.0, description="Quality score")
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class ModelWithMetrics(ModelResponse):
     metrics: ModelMetrics | None = None
 
 
 class ModelTestRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, description="Test prompt")
+    prompt: str = Field("hello", min_length=1, description="Test prompt")
     max_tokens: int | None = Field(100, ge=1, le=4096)
 
 
@@ -129,8 +126,7 @@ class TaskBindingCreate(BaseModel):
         default_factory=dict, description="Fallback configuration"
     )
     environment: Environment = Field(Environment.DEV, description="Environment")
-    if ConfigDict is not None:
-        model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class TaskBindingResponse(BaseModel):
@@ -142,14 +138,12 @@ class TaskBindingResponse(BaseModel):
     fallback_config: dict[str, Any]
     environment: Environment
     created_at: datetime
-    if ConfigDict is not None:
-        model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
 
 class TaskBindingWithModel(TaskBindingResponse):
     model: ModelResponse
-    if ConfigDict is not None:
-        model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class EnvironmentCreate(BaseModel):
@@ -168,8 +162,7 @@ class EnvironmentResponse(BaseModel):
     config_schema: dict[str, Any]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuditLogResponse(BaseModel):
@@ -184,8 +177,7 @@ class AuditLogResponse(BaseModel):
     user_agent: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginationParams(BaseModel):
@@ -252,10 +244,14 @@ class ChatRequest(BaseModel):
     query: str
     conversation_id: str | None = None
     top_k: int | None = 5
+    candidate_k: int | None = None
     document_ids: list[str] | None = None
     vector_weight: float | None = None
     keyword_weight: float | None = None
     web_search_enabled: bool | None = None
+    reranker_threshold: float | None = None
+    lang_hint: str | None = None
+    kb_name: str | None = None
 
 
 class ChatResponse(BaseModel):

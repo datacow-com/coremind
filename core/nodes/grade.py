@@ -30,7 +30,10 @@ async def grade(state: RAGState) -> dict:
             "metrics": {"grade": {"duration_ms": dur, "max_score": 0.0, "threshold": 0.35}},
         }
     max_score = max([float(x.get("rerank_score") or x.get("score") or 0.0) for x in items])
-    threshold = float(settings.grade_threshold)
+    try:
+        threshold = float(meta.get("grade_threshold"))
+    except Exception:
+        threshold = float(settings.grade_threshold)
     dur = int((time.perf_counter() - t0) * 1000)
     return {
         "web_search_needed": max_score < threshold,

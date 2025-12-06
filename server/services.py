@@ -1,9 +1,10 @@
 import logging
+import os
+import uuid
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
-from redis import Redis
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,9 +37,15 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
+_LIGHT_MODE = not bool(os.environ.get("DATABASE_URL"))
+_MEM_MODELS: dict[str, dict[str, Any]] = {}
+_MEM_BINDINGS: list[dict[str, Any]] = []
+_MEM_CREDS: list[dict[str, Any]] = []
+_MEM_ENV_VERSIONS: dict[str, list[dict[str, Any]]] = {}
+
 
 class ModelGatewayService:
-    def __init__(self, db: AsyncSession, redis_client: Redis | None = None):
+    def __init__(self, db: AsyncSession, redis_client: Any | None = None):
         self.db = db
         self.redis = redis_client
         self.cache_ttl = 300  # 5 minutes
@@ -47,6 +54,25 @@ class ModelGatewayService:
         self, model_data: ModelCreate, user_id: UUID, user_name: str
     ) -> ModelResponse:
         """Create a new model configuration"""
+        if _LIGHT_MODE:
+            mid = uuid.uuid4()
+            now = datetime.now()
+            data = {
+                "id": mid,
+                "name": model_data.name,
+                "stack": model_data.stack,
+                "category": model_data.category,
+                "endpoint": model_data.endpoint,
+                "auth_config": model_data.auth_config,
+                "parameters": model_data.parameters,
+                "priority": model_data.priority,
+                "status": model_data.status,
+                "environment": model_data.environment,
+                "created_at": now,
+                "updated_at": None,
+            }
+            _MEM_MODELS[str(mid)] = data
+            return ModelResponse(**data)
         model = Model(**model_data.dict())
         self.db.add(model)
         await self.db.flush()
@@ -66,6 +92,11 @@ class ModelGatewayService:
 
     async def get_model(self, model_id: UUID) -> ModelWithMetrics | None:
         """Get model by ID with latest metrics"""
+        if _LIGHT_MODE:
+            data = _MEM_MODELS.get(str(model_id))
+            if not data:
+                return None
+            return ModelWithMetrics(**data)
         result = await self.db.execute(select(Model).where(Model.id == model_id))
         model = result.scalar_one_or_none()
         if not model:
@@ -84,6 +115,19 @@ class ModelGatewayService:
         self, filters: ModelFilterParams, pagination: PaginationParams
     ) -> ModelListResponse:
         """List models with filtering and pagination"""
+        if _LIGHT_MODE:
+            items = list(_MEM_MODELS.values())
+            total = len(items)
+            page = pagination.page
+            size = pagination.page_size
+            start = (page - 1) * size
+            end = start + size
+            return ModelListResponse(
+                models=[ModelWithMetrics(**m) for m in items[start:end]],
+                total=total,
+                page=page,
+                page_size=size,
+            )
         query = select(Model)
 
         # Apply filters
@@ -120,7 +164,7 @@ class ModelGatewayService:
         model_responses = []
         for model in models:
             model_dict = ModelResponse.from_orm(model).dict()
-            metrics = await self._get_latest_metrics(model.id)
+            metrics = await self._get_latest_metrics(cast(UUID, model.id))
             if metrics:
                 model_dict["metrics"] = ModelMetrics.from_orm(metrics)
             model_responses.append(ModelWithMetrics(**model_dict))
@@ -136,6 +180,16 @@ class ModelGatewayService:
         self, model_id: UUID, model_data: ModelUpdate, user_id: UUID, user_name: str
     ) -> ModelResponse | None:
         """Update model configuration"""
+        if _LIGHT_MODE:
+            data = _MEM_MODELS.get(str(model_id))
+            if not data:
+                return None
+            upd = model_data.dict(exclude_unset=True)
+            for k, v in upd.items():
+                data[k] = v
+            data["updated_at"] = datetime.now()
+            _MEM_MODELS[str(model_id)] = data
+            return ModelResponse(**data)
         result = await self.db.execute(select(Model).where(Model.id == model_id))
         model = result.scalar_one_or_none()
         if not model:
@@ -163,6 +217,11 @@ class ModelGatewayService:
 
     async def delete_model(self, model_id: UUID, user_id: UUID, user_name: str) -> bool:
         """Delete model configuration"""
+        if _LIGHT_MODE:
+            if str(model_id) in _MEM_MODELS:
+                _MEM_MODELS.pop(str(model_id), None)
+                return True
+            return False
         result = await self.db.execute(select(Model).where(Model.id == model_id))
         model = result.scalar_one_or_none()
         if not model:
@@ -186,10 +245,12 @@ class ModelGatewayService:
         self, model_id: UUID, test_request: ModelTestRequest
     ) -> ModelTestResponse:
         """Test model connection and performance"""
+        if _LIGHT_MODE:
+            return ModelTestResponse(status="success", latency=100.0, ttft=0.1, error=None)
         result = await self.db.execute(select(Model).where(Model.id == model_id))
         model = result.scalar_one_or_none()
         if not model:
-            return ModelTestResponse(status="failed", latency=0, error="Model not found")
+            return ModelTestResponse(status="failed", latency=0, ttft=None, error="Model not found")
 
         try:
             start_time = datetime.now()
@@ -213,12 +274,25 @@ class ModelGatewayService:
 
         except Exception as e:
             logger.error(f"Model test failed for {model_id}: {str(e)}")
-            return ModelTestResponse(status="failed", latency=0, error=str(e))
+            return ModelTestResponse(status="failed", latency=0, ttft=None, error=str(e))
 
     async def create_task_binding(
         self, binding_data: TaskBindingCreate, user_id: UUID, user_name: str
     ) -> TaskBindingResponse:
         """Create task to model binding"""
+        if _LIGHT_MODE:
+            b = {
+                "id": uuid.uuid4(),
+                "task_id": binding_data.task_id,
+                "task_name": binding_data.task_name,
+                "model_id": binding_data.model_id,
+                "priority": binding_data.priority,
+                "fallback_config": binding_data.fallback_config or {},
+                "environment": binding_data.environment,
+                "created_at": datetime.now(),
+            }
+            _MEM_BINDINGS.append(b)
+            return TaskBindingResponse(**b)
         # Check if model exists
         model_result = await self.db.execute(select(Model).where(Model.id == binding_data.model_id))
         if not model_result.scalar_one_or_none():
@@ -250,6 +324,18 @@ class ModelGatewayService:
 
     async def get_task_bindings(self, task_id: str, environment: str) -> list[TaskBindingWithModel]:
         """Get task bindings for a specific task and environment"""
+        if _LIGHT_MODE:
+            res: list[TaskBindingWithModel] = []
+            for b in _MEM_BINDINGS:
+                env_val = getattr(b.get("environment"), "value", str(b.get("environment")))
+                if b.get("task_id") == task_id and env_val == environment:
+                    mid = str(b.get("model_id"))
+                    m = _MEM_MODELS.get(mid)
+                    if m:
+                        bd = dict(b)
+                        bd["model"] = ModelResponse(**m)
+                        res.append(TaskBindingWithModel(**bd))
+            return res
         result = await self.db.execute(
             select(TaskBinding, Model)
             .join(Model, TaskBinding.model_id == Model.id)
@@ -267,6 +353,24 @@ class ModelGatewayService:
 
     async def get_dashboard_stats(self) -> DashboardStats:
         """Get dashboard statistics"""
+        if _LIGHT_MODE:
+            total = len(_MEM_MODELS)
+            active = total
+            cn = sum(
+                1
+                for m in _MEM_MODELS.values()
+                if str(getattr(m.get("stack"), "value", m.get("stack"))).lower() == "cn"
+            )
+            overseas = total - cn
+            return DashboardStats(
+                total_models=total,
+                active_models=active,
+                cn_models=cn,
+                overseas_models=overseas,
+                avg_ttft=0.0,
+                avg_throughput=0.0,
+                avg_error_rate=0.0,
+            )
         # Model counts
         total_models_result = await self.db.execute(select(func.count(Model.id)))
         total_models = total_models_result.scalar()
@@ -296,7 +400,7 @@ class ModelGatewayService:
             ).where(ModelMetric.recorded_at >= yesterday)
         )
 
-        avg_ttft, avg_throughput, avg_error_rate = metrics_result.first()
+        avg_ttft, avg_throughput, avg_error_rate = metrics_result.first() or (0.0, 0.0, 0.0)
 
         return DashboardStats(
             total_models=total_models or 0,
@@ -358,6 +462,8 @@ class ModelGatewayService:
 
     # Credentials CRUD (local ORM)
     async def list_credentials(self, provider_id: str) -> list[dict[str, Any]]:
+        if _LIGHT_MODE:
+            return [c for c in _MEM_CREDS if c.get("provider_id") == provider_id]
         result = await self.db.execute(
             select(ModelCredential).where(ModelCredential.provider_id == UUID(provider_id))
         )
@@ -383,6 +489,32 @@ class ModelGatewayService:
     async def upsert_credentials(
         self, provider_id: str, env: str, data: dict[str, Any], user_id: UUID, user_name: str
     ) -> dict[str, Any]:
+        if _LIGHT_MODE:
+            found = None
+            for c in _MEM_CREDS:
+                if c.get("provider_id") == provider_id and c.get("env") == env:
+                    found = c
+                    break
+            if found is None:
+                found = {
+                    "id": str(uuid.uuid4()),
+                    "provider_id": provider_id,
+                    "env": env,
+                    "auth_type": "api_key",
+                    "key_name": None,
+                    "key_last4": None,
+                    "rate_limit_rps": None,
+                    "quota_limit": None,
+                    "quota_window": None,
+                    "billing_info": {},
+                    "created_at": datetime.now(),
+                    "updated_at": None,
+                }
+                _MEM_CREDS.append(found)
+            for k, v in data.items():
+                found[k] = v
+            found["updated_at"] = datetime.now()
+            return found
         # find existing
         result = await self.db.execute(
             select(ModelCredential).where(
@@ -424,6 +556,13 @@ class ModelGatewayService:
     async def delete_credentials(
         self, provider_id: str, env: str, user_id: UUID, user_name: str
     ) -> bool:
+        if _LIGHT_MODE:
+            _MEM_CREDS[:] = [
+                c
+                for c in _MEM_CREDS
+                if not (c.get("provider_id") == provider_id and c.get("env") == env)
+            ]
+            return True
         result = await self.db.execute(
             select(ModelCredential).where(
                 and_(ModelCredential.provider_id == UUID(provider_id), ModelCredential.env == env)
@@ -494,8 +633,8 @@ class ModelGatewayService:
             "DASHSCOPE_COMPAT_URL",
             "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
         )
-        mdl = (model.parameters or {}).get("model_name") if hasattr(model, "parameters") else None
-        mdl = mdl or "qwen-plus"
+        params: dict[str, Any] = getattr(model, "parameters", {}) or {}
+        mdl = params.get("model_name") or "qwen-plus"
         body = {
             "model": mdl,
             "messages": [{"role": "user", "content": test_request.prompt or "hello"}],
@@ -509,9 +648,10 @@ class ModelGatewayService:
                 r = await client.post(url, headers=headers, json=body)
                 r.raise_for_status()
                 duration = time.perf_counter() - t0
+                tokens = int(test_request.max_tokens or 50)
                 return {
                     "ttft": duration,
-                    "throughput": max(1.0, (body["max_tokens"] or 50) / max(duration, 1e-3)),
+                    "throughput": max(1.0, tokens / max(duration, 1e-3)),
                     "quality_score": 0.85,
                 }
         except Exception:
@@ -529,8 +669,8 @@ class ModelGatewayService:
         url = os.environ.get(
             "VOLCENGINE_COMPAT_URL", "https://api.ark.cn-beijing.volces.com/v3/chat/completions"
         )
-        mdl = (model.parameters or {}).get("model_name") if hasattr(model, "parameters") else None
-        mdl = mdl or "ep-20241220160838-tw4hv"  # placeholder endpoint name if required
+        params: dict[str, Any] = getattr(model, "parameters", {}) or {}
+        mdl = params.get("model_name") or "ep-20241220160838-tw4hv"
         body = {
             "model": mdl,
             "messages": [{"role": "user", "content": test_request.prompt or "hello"}],
@@ -544,9 +684,10 @@ class ModelGatewayService:
                 r = await client.post(url, headers=headers, json=body)
                 r.raise_for_status()
                 duration = time.perf_counter() - t0
+                tokens = int(test_request.max_tokens or 50)
                 return {
                     "ttft": duration,
-                    "throughput": max(1.0, (body["max_tokens"] or 50) / max(duration, 1e-3)),
+                    "throughput": max(1.0, tokens / max(duration, 1e-3)),
                     "quality_score": 0.85,
                 }
         except Exception:
@@ -574,10 +715,14 @@ class ModelGatewayService:
 
     # Environment versioning
     async def list_environments(self) -> list[Environment]:
+        if _LIGHT_MODE:
+            return []
         result = await self.db.execute(select(Environment))
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def list_env_versions(self, name: str) -> list[dict[str, Any]]:
+        if _LIGHT_MODE:
+            return list(_MEM_ENV_VERSIONS.get(name, []))
         result = await self.db.execute(
             select(EnvironmentVersion)
             .where(EnvironmentVersion.name == name)
@@ -599,6 +744,19 @@ class ModelGatewayService:
     async def create_env_version(
         self, name: str, config: dict[str, Any], user_name: str
     ) -> dict[str, Any]:
+        if _LIGHT_MODE:
+            arr = _MEM_ENV_VERSIONS.setdefault(name, [])
+            ver = (arr[0]["version"] if arr else 0) + 1
+            rec = {
+                "id": str(uuid.uuid4()),
+                "name": name,
+                "version": ver,
+                "config": config,
+                "created_at": datetime.now(),
+                "created_by": user_name,
+            }
+            arr.insert(0, rec)
+            return rec
         # compute next version
         result = await self.db.execute(
             select(func.max(EnvironmentVersion.version)).where(EnvironmentVersion.name == name)
@@ -627,6 +785,14 @@ class ModelGatewayService:
         }
 
     async def rollback_env_version(self, name: str, version: int, user_name: str) -> bool:
+        if _LIGHT_MODE:
+            arr = _MEM_ENV_VERSIONS.get(name, [])
+            target = next((x for x in arr if int(x.get("version")) == int(version)), None)
+            if not target:
+                return False
+            cfg: dict[str, Any] = dict(target.get("config") or {})
+            await self.create_env_version(name, cfg, user_name)
+            return True
         # find target version
         result = await self.db.execute(
             select(EnvironmentVersion).where(
@@ -637,12 +803,26 @@ class ModelGatewayService:
         if not target:
             return False
         # create new version copying config
-        await self.create_env_version(name, target.config or {}, user_name)
+        cfg: dict[str, Any] = dict(target.config or {})
+        await self.create_env_version(name, cfg, user_name)
         return True
 
     async def apply_env_version(
         self, name: str, version: int, dry_run: bool, user_name: str
     ) -> dict[str, Any]:
+        if _LIGHT_MODE:
+            arr = _MEM_ENV_VERSIONS.get(name, [])
+            current_ver = arr[0]["version"] if arr else 0
+            target = next((x for x in arr if int(x.get("version")) == int(version)), None)
+            if not target:
+                raise ValueError("Version not found")
+            diff = {"from": current_ver, "to": version, "changes": target.get("config")}
+            if dry_run:
+                return {"preview": diff}
+            applied = await self.create_env_version(
+                name, dict(target.get("config") or {}), user_name
+            )
+            return {"applied": applied, "preview": diff}
         # current max version
         current_q = await self.db.execute(
             select(func.max(EnvironmentVersion.version)).where(EnvironmentVersion.name == name)
@@ -660,12 +840,13 @@ class ModelGatewayService:
         if dry_run:
             return {"preview": diff}
         # apply by creating a new version equal to target (mark applied)
-        applied = await self.create_env_version(name, target.config or {}, user_name)
+        cfg: dict[str, Any] = dict(target.config or {})
+        applied = await self.create_env_version(name, cfg, user_name)
         return {"applied": applied, "preview": diff}
 
     async def _create_audit_log(
         self,
-        user_id: UUID,
+        user_id: UUID | None,
         user_name: str,
         action: str,
         resource_type: str,

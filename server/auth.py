@@ -10,10 +10,20 @@ security = HTTPBearer(auto_error=False)
 
 
 def _secret() -> str:
+    """
+    JWT 签名密钥规则：
+    - prod/staging：必须提供 SECRET_KEY 且长度 >=16；
+    - dev/test：也需显式提供，避免弱默认值。
+    """
     s = os.environ.get("SECRET_KEY")
-    if (os.environ.get("APP_ENV", "dev").lower() == "prod") and not s:
-        raise RuntimeError("SECRET_KEY required")
-    return s or "dev-secret"
+    env = os.environ.get("APP_ENV", "dev").lower()
+    if env in {"prod", "production", "staging", "stage"}:
+        if not s or len(s) < 16:
+            raise RuntimeError("SECRET_KEY required and must be >=16 chars in prod/staging")
+        return s
+    if not s or len(s) < 16:
+        raise RuntimeError("SECRET_KEY required (>=16 chars) even in dev/test")
+    return s
 
 
 def create_token(subject: str, ttl_seconds: int = 3600) -> str:
@@ -47,8 +57,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
     try:
         payload = jwt.decode(token, _secret(), algorithms=["HS256"])
         return payload
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError as err:
+        raise HTTPException(status_code=401, detail="Invalid token") from err
 
 
 def get_current_user(

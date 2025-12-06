@@ -1,3 +1,5 @@
+from typing import Any
+
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
@@ -5,7 +7,7 @@ from langchain_core.retrievers import BaseRetriever
 class OmniIndexRetriever(BaseRetriever):
     top_k: int = 5
 
-    def _get_relevant_documents(self, query: str) -> list[Document]:
+    def _get_relevant_documents(self, query: str, *, run_manager: Any = None) -> list[Document]:
         from core.embedding.provider_embedder import Embedder
         from core.storage.index_router import search as index_search
 

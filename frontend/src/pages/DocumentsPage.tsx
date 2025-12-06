@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FileText, Download, Trash2, RefreshCw } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 interface Document {
   id: string;
@@ -21,7 +22,7 @@ const DocumentsPage: React.FC = () => {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch("/api/documents");
+      const response = await apiFetch("/api/documents");
       if (response.ok) {
         const data = await response.json();
         setDocuments(data.documents);
@@ -35,7 +36,7 @@ const DocumentsPage: React.FC = () => {
 
   const handleDeleteDocument = async (documentId: string) => {
     try {
-      const response = await fetch(`/api/documents/${documentId}`, {
+      const response = await apiFetch(`/api/documents/${documentId}`, {
         method: "DELETE",
       });
 

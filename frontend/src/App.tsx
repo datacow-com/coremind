@@ -11,12 +11,22 @@ import IngestPage from "./pages/IngestPage";
 import FilesManagerPage from "./pages/FilesManagerPage";
 import KnowledgeBasesPage from "./pages/KnowledgeBasesPage";
 import KnowledgeBaseDetail from "./pages/KnowledgeBaseDetail";
+import LoginPage from "./pages/LoginPage";
+import AuthGuard from "./components/AuthGuard";
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Layout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/"
+          element={
+            <AuthGuard>
+              <Layout />
+            </AuthGuard>
+          }
+        >
           <Route index element={<ChatPage />} />
           <Route path="documents" element={<DocumentsPage />} />
           <Route path="search" element={<VectorStorePage />} />

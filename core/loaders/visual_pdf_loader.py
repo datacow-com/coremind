@@ -12,6 +12,8 @@ class ParsingRule:
         punct_ratio_threshold: float = 0.15,
         cache_enabled: bool = True,
         max_cache_entries: int = 16,
+        semantic: bool = False,
+        denoise: bool = False,
     ):
         self.prefer_ocr = prefer_ocr
         self.force_vision = force_vision
@@ -21,6 +23,8 @@ class ParsingRule:
         self.punct_ratio_threshold = punct_ratio_threshold
         self.cache_enabled = cache_enabled
         self.max_cache_entries = max_cache_entries
+        self.semantic = semantic
+        self.denoise = denoise
 
 
 class VisualPDFLoader:
@@ -55,7 +59,13 @@ class VisualPDFLoader:
                                 "page_num": page_index,
                                 "doc_id": pdf_path,
                                 "chunk_index": j,
-                                "metadata": {"type": "table", "bbox": bbox, "confidence": 0.0},
+                                "metadata": {
+                                    "block_type": "table",
+                                    "bbox": bbox,
+                                    "confidence": 0.0,
+                                    "table_id": idx,
+                                    "heading_level": None,
+                                },
                             }
                         )
 
@@ -69,6 +79,19 @@ class VisualPDFLoader:
             )
             if used_vision:
                 for i, chunk in enumerate(self._chunk_text(markdown)):
+                    parent_id = None
+                    if getattr(self.parsing_rule, "semantic", False):
+                        import re
+
+                        m = re.search(r"^(#{1,6}\s*(.+))$", chunk, re.MULTILINE)
+                        if m:
+                            title = m.group(2).strip()
+                            if title:
+                                parent_id = f"{pdf_path}-p{page_index}-parent-{abs(hash(title))}"
+                    import re
+
+                    hm = re.match(r"^(#{1,6})\s", chunk)
+                    hlevel = len(hm.group(1)) if hm else None
                     chunks.append(
                         {
                             "id": f"{pdf_path}-p{page_index}-chunk-{i}",
@@ -76,7 +99,14 @@ class VisualPDFLoader:
                             "page_num": page_index,
                             "doc_id": pdf_path,
                             "chunk_index": i,
-                            "metadata": {"type": "visual", "confidence": 0.0, "bbox": (0, 0, w, h)},
+                            "metadata": {
+                                "block_type": "heading" if hlevel else "paragraph",
+                                "confidence": 0.0,
+                                "bbox": (0, 0, w, h),
+                                "parent_id": parent_id,
+                                "heading_level": hlevel,
+                                "table_id": None,
+                            },
                         }
                     )
             else:
@@ -84,6 +114,21 @@ class VisualPDFLoader:
                 blocks = self._block_cache.get(cache_key, [])
                 if not blocks:
                     for i, chunk in enumerate(self._chunk_text(markdown)):
+                        parent_id = None
+                        if getattr(self.parsing_rule, "semantic", False):
+                            import re
+
+                            m = re.search(r"^(#{1,6}\s*(.+))$", chunk, re.MULTILINE)
+                            if m:
+                                title = m.group(2).strip()
+                                if title:
+                                    parent_id = (
+                                        f"{pdf_path}-p{page_index}-parent-{abs(hash(title))}"
+                                    )
+                        import re
+
+                        hm = re.match(r"^(#{1,6})\s", chunk)
+                        hlevel = len(hm.group(1)) if hm else None
                         chunks.append(
                             {
                                 "id": f"{pdf_path}-p{page_index}-chunk-{i}",
@@ -92,9 +137,12 @@ class VisualPDFLoader:
                                 "doc_id": pdf_path,
                                 "chunk_index": i,
                                 "metadata": {
-                                    "type": "visual",
+                                    "block_type": "heading" if hlevel else "paragraph",
                                     "confidence": 0.0,
                                     "bbox": (0, 0, w, h),
+                                    "parent_id": parent_id,
+                                    "heading_level": hlevel,
+                                    "table_id": None,
                                 },
                             }
                         )
@@ -104,6 +152,9 @@ class VisualPDFLoader:
                         if not line:
                             continue
                         content = f"## {line}" if len(line) < 80 else line
+                        parent_id = None
+                        if getattr(self.parsing_rule, "semantic", False):
+                            parent_id = f"{pdf_path}-p{page_index}-parent-{abs(hash(line))}"
                         chunks.append(
                             {
                                 "id": f"{pdf_path}-p{page_index}-block-{bi}",
@@ -111,7 +162,16 @@ class VisualPDFLoader:
                                 "page_num": page_index,
                                 "doc_id": pdf_path,
                                 "chunk_index": bi,
-                                "metadata": {"type": "visual", "confidence": 0.0, "bbox": bbbox},
+                                "metadata": {
+                                    "block_type": "heading"
+                                    if content.startswith("## ")
+                                    else "paragraph",
+                                    "confidence": 0.0,
+                                    "bbox": bbbox,
+                                    "parent_id": parent_id,
+                                    "heading_level": 2 if content.startswith("## ") else None,
+                                    "table_id": None,
+                                },
                             }
                         )
         return chunks
@@ -133,15 +193,64 @@ class VisualPDFLoader:
             page_text = page.get_text("text") or ""
             pages.append((image_bytes, page_text))
             try:
-                blocks = page.get_text("blocks") or []
                 cache_key = f"{pdf_path}#p{i}"
                 blist: list[tuple[str, tuple[int, int, int, int]]] = []
+                blocks = page.get_text("blocks") or []
                 for b in blocks:
                     if isinstance(b, (list, tuple)) and len(b) >= 5:
                         x0, y0, x1, y1 = int(b[0]), int(b[1]), int(b[2]), int(b[3])
                         txt = str(b[4] or "").strip()
                         if txt:
                             blist.append((txt, (x0, y0, x1 - x0, y1 - y0)))
+                try:
+                    from core.vision.layout_analyzer import analyze_blocks
+
+                    la_boxes = analyze_blocks(image_bytes)
+                    la_list = [("", (x, y, w, h)) for (x, y, w, h) in la_boxes]
+                except Exception:
+                    la_list = []
+                try:
+                    import os as _os
+
+                    from core.vision.yolo_detector import detect_blocks_yolo
+
+                    yolo_enabled = bool(_os.environ.get("YOLO_ENABLED"))
+                    model_path = _os.environ.get("YOLO_MODEL")
+                    yo_list = []
+                    if yolo_enabled and model_path:
+                        yo_boxes = detect_blocks_yolo(image_bytes, model_path)
+                        yo_list = [("", (x, y, w, h)) for (x, y, w, h) in yo_boxes]
+                except Exception:
+                    yo_list = []
+                # fuse blocks: PyMuPDF blocks + layout analyzer + YOLO (unique by bbox)
+                all_blocks = blist + la_list + yo_list
+                uniq: list[tuple[str, tuple[int, int, int, int]]] = []
+                seen = set()
+                for txt, bb in all_blocks:
+                    key = (bb[0], bb[1], bb[2], bb[3])
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    uniq.append((txt, bb))
+                blist = uniq
+                try:
+                    import os as _os
+
+                    from core.vision.layoutlm_parser import classify_blocks_layoutlm
+
+                    clf_name = _os.environ.get("LAYOUTLM_CLASS_MODEL")
+                    if clf_name and blist:
+                        boxes = [bb for _, bb in blist]
+                        cls = classify_blocks_layoutlm(image_bytes, boxes, clf_name)
+                        tmp = []
+                        for (txt, bb), lab in zip(blist, cls, strict=False):
+                            labn = (
+                                lab if lab in {"paragraph", "heading", "table", "figure"} else txt
+                            )
+                            tmp.append((labn, bb))
+                        blist = tmp
+                except Exception:
+                    pass
                 self._block_cache[cache_key] = blist
             except Exception:
                 pass
@@ -187,21 +296,27 @@ class VisualPDFLoader:
     def _should_use_vision(self, page_text: str, table_count: int) -> bool:
         if self.parsing_rule.force_vision:
             return True
+        score = self._complexity_score(page_text or "", table_count)
+        return score >= 1.0
+
+    def _complexity_score(self, txt: str, table_count: int) -> float:
         if table_count >= self.parsing_rule.table_threshold:
-            return True
-        txt = page_text or ""
-        if len(txt) < self.parsing_rule.text_length_threshold:
-            return True
+            return 1.2
+        if not txt:
+            return 1.0
         lines = [line.strip() for line in txt.splitlines() if line.strip()]
         short_lines = [line for line in lines if len(line) < 80]
         short_ratio = (len(short_lines) / max(len(lines), 1)) if lines else 1.0
         puncts = sum([1 for ch in txt if ch in ",.;:!?"])
         punct_ratio = (puncts / max(len(txt), 1)) if txt else 0.0
+        base = 0.0
+        if len(txt) < self.parsing_rule.text_length_threshold:
+            base += 0.6
         if short_ratio >= self.parsing_rule.short_line_ratio_threshold:
-            return True
+            base += 0.4
         if punct_ratio <= self.parsing_rule.punct_ratio_threshold:
-            return True
-        return False
+            base += 0.3
+        return base
 
     def _detect_tables(self, image_bytes: bytes) -> list[tuple[bytes, tuple[int, int, int, int]]]:
         try:
@@ -212,6 +327,10 @@ class VisualPDFLoader:
 
         buf = np.frombuffer(image_bytes, dtype=np.uint8)
         img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+        if img is None:
+            return []
+        if getattr(self.parsing_rule, "denoise", False):
+            img = self._preprocess_image(img)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         thr = cv2.adaptiveThreshold(
             gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 15, 10
@@ -234,6 +353,16 @@ class VisualPDFLoader:
             regions.append((enc.tobytes(), (x, y, w, h)))
         regions.sort(key=lambda r: (r[1][1], r[1][0]))
         return regions
+
+    def _preprocess_image(self, img):
+        try:
+            import cv2
+        except Exception:
+            return img
+        den = cv2.bilateralFilter(img, 7, 75, 75)
+        kern = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        opn = cv2.morphologyEx(den, cv2.MORPH_OPEN, kern)
+        return opn
 
     def _detect_tables_cached(
         self, pdf_path: str, page_index: int, image_bytes: bytes
@@ -265,6 +394,8 @@ class VisualPDFLoader:
     def _chunk_text(self, text: str) -> list[str]:
         if not text:
             return []
+        if getattr(self.parsing_rule, "semantic", False):
+            return self._chunk_text_semantic(text)
         paras = [p.strip() for p in text.split("\n\n") if p.strip()]
         chunks: list[str] = []
         buf: list[str] = []
@@ -288,4 +419,27 @@ class VisualPDFLoader:
             else:
                 for i in range(0, len(c), target_max):
                     out.append(c[i : i + target_max])
+        return out
+
+    def _chunk_text_semantic(self, text: str) -> list[str]:
+        import re
+
+        heads = list(re.finditer(r"^(#{1,6}[^\n]+)$", text, re.MULTILINE))
+        if not heads:
+            return self._chunk_text(text)
+        parts: list[str] = []
+        for i, h in enumerate(heads):
+            start = h.start()
+            end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+            seg = text[start:end].strip()
+            if seg:
+                parts.append(seg)
+        out: list[str] = []
+        target_max = 1400
+        for p in parts:
+            if len(p) <= target_max:
+                out.append(p)
+            else:
+                for i in range(0, len(p), target_max):
+                    out.append(p[i : i + target_max])
         return out

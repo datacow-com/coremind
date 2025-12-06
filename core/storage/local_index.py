@@ -6,22 +6,41 @@ import numpy as np
 class LocalIndex:
     def __init__(self, dim: int = 256):
         self.dim = dim
-        self._vectors: list[np.ndarray] = []
+        self._vectors: list[Any] = []
         self._meta: list[dict[str, Any]] = []
+        self._matrix: np.ndarray | None = None
+        self._dirty: bool = False
 
-    def add(self, vec: np.ndarray, meta: dict[str, Any]) -> None:
-        if vec.shape[-1] != self.dim:
+    def add(self, vec: Any, meta: dict[str, Any]) -> None:
+        try:
+            d = getattr(vec, "shape", (self.dim,))[-1]
+        except Exception:
+            d = self.dim
+        if d != self.dim:
             raise ValueError("vector dim mismatch")
-        self._vectors.append(vec.astype(np.float32))
+        try:
+            arr = np.asarray(vec, dtype=np.float32)
+        except Exception:
+            arr = np.array(vec, dtype=np.float32)
+        self._vectors.append(arr)
         self._meta.append(meta)
+        self._dirty = True
 
-    def search(self, query_vec: np.ndarray, top_k: int = 5) -> list[tuple[dict[str, Any], float]]:
+    def search(self, query_vec: Any, top_k: int = 5) -> list[tuple[dict[str, Any], float]]:
         if not self._vectors:
             return []
-        mat = np.stack(self._vectors, axis=0)  # (N, D)
+        if self._dirty or self._matrix is None:
+            self._matrix = np.stack(self._vectors, axis=0)
+            self._dirty = False
+        mat = self._matrix  # (N, D)
         # cosine similarity
-        q = query_vec.astype(np.float32)
-        scores = mat @ q  # since both are l2-normalized
+        q = query_vec
+        if not isinstance(q, np.ndarray):
+            q = np.array(q, dtype=np.float32)
+        else:
+            q = q.astype(np.float32)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            scores = mat @ q
         idx = np.argsort(-scores)[:top_k]
         return [(self._meta[i], float(scores[i])) for i in idx]
 
@@ -54,6 +73,9 @@ class LocalIndex:
             "chunk_count": len(self._meta),
             "embedding_dimension": self.dim,
         }
+
+    def list_all_meta(self) -> list[dict[str, Any]]:
+        return list(self._meta)
 
     def delete_document(self, doc_id: str) -> int:
         if not self._meta:

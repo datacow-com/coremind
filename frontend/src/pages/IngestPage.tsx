@@ -6,6 +6,10 @@ import {
   PlayCircle,
   ListChecks,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { checkFile } from "@/lib/validation";
+import { useToast } from "@/components/ui/toast-provider";
+import { useStream } from "@/hooks/useStream";
 
 type ThoughtEvent = {
   phase?: string;
@@ -21,14 +25,17 @@ const IngestPage: React.FC = () => {
   const [, setLastDocId] = useState<string>("");
   const [events, setEvents] = useState<ThoughtEvent[]>([]);
   const [busy, setBusy] = useState<boolean>(false);
+  const [errMsg, setErrMsg] = useState<string>("");
   const autoInputRef = useRef<HTMLInputElement>(null);
   const typedInputRef = useRef<HTMLInputElement>(null);
   const [typedEndpoint, setTypedEndpoint] = useState<string>("pdf");
   const [documents, setDocuments] = useState<any[]>([]);
+  const { push } = useToast();
+  const { runStream, running: streamBusy } = useStream();
 
   const loadDocuments = async () => {
     try {
-      const r = await fetch("/api/documents");
+      const r = await apiFetch("/api/documents");
       if (r.ok) {
         const d = await r.json();
         setDocuments(d.documents || []);
@@ -49,13 +56,34 @@ const IngestPage: React.FC = () => {
 
   const handleAutoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || busy) return;
+    if (!file || busy || streamBusy) return;
+    setErrMsg("");
+    const ck = checkFile(file, {
+      exts: [
+        "pdf",
+        "png",
+        "jpg",
+        "jpeg",
+        "md",
+        "docx",
+        "pptx",
+        "xlsx",
+        "html",
+        "eml",
+      ],
+    });
+    if (!ck.ok) {
+      setErrMsg(ck.error || "文件校验失败");
+      push({ title: "上传失败", description: ck.error, variant: "error" });
+      e.target.value = "";
+      return;
+    }
     resetPreview();
     setBusy(true);
     const form = new FormData();
     form.append("file", file);
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/ingest/auto?index=${indexEnabled ? "true" : "false"}`,
         { method: "POST", body: form },
       );
@@ -76,23 +104,11 @@ const IngestPage: React.FC = () => {
     const form = new FormData();
     form.append("file", file);
     const url = `/api/ingest/${endpoint}/stream?index=${indexEnabled ? "true" : "false"}`;
-    const res = await fetch(url, { method: "POST", body: form });
-    if (!res.ok || !res.body) throw new Error("stream failed");
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    while (true) {
-      const r = await reader.read();
-      if (r.done) break;
-      buf += decoder.decode(r.value, { stream: true });
-      const parts = buf.split("\n\n");
-      buf = parts.pop() || "";
-      for (const chunk of parts) {
-        const line = chunk.trim();
-        if (!line.startsWith("data:")) continue;
-        const js = line.slice(5).trim();
-        try {
-          const evt = JSON.parse(js);
+    await runStream(
+      url,
+      { method: "POST", body: form },
+      {
+        onEvent: (evt) => {
           if (evt.type === "phase" || evt.phase) {
             const ph = evt.name || evt.phase;
             const st = evt.status || "end";
@@ -114,15 +130,45 @@ const IngestPage: React.FC = () => {
             setLastDocId(String(evt.document_id || ""));
           } else if (evt.error) {
             setMdPreview(`Error: ${String(evt.error)}`);
+            push({
+              title: "摄取失败",
+              description: String(evt.error),
+              variant: "error",
+            });
           }
-        } catch {}
-      }
-    }
+        },
+        onError: (err) => {
+          push({
+            title: "摄取流中断",
+            description: err?.message || "请重试",
+            variant: "error",
+          });
+        },
+      },
+    );
   };
 
   const handleTypedUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || busy) return;
+    if (!file || busy || streamBusy) return;
+    setErrMsg("");
+    const extMap: Record<string, string[]> = {
+      pdf: ["pdf"],
+      image: ["png", "jpg", "jpeg"],
+      markdown: ["md"],
+      docx: ["docx"],
+      pptx: ["pptx"],
+      xlsx: ["xlsx"],
+      html: ["html", "htm"],
+      eml: ["eml"],
+    };
+    const ck = checkFile(file, { exts: extMap[typedEndpoint] || [] });
+    if (!ck.ok) {
+      setErrMsg(ck.error || "文件校验失败");
+      push({ title: "上传失败", description: ck.error, variant: "error" });
+      e.target.value = "";
+      return;
+    }
     resetPreview();
     setBusy(true);
     try {
@@ -131,7 +177,7 @@ const IngestPage: React.FC = () => {
       } else {
         const form = new FormData();
         form.append("file", file);
-        const res = await fetch(
+        const res = await apiFetch(
           `/api/ingest/${typedEndpoint}?index=${indexEnabled ? "true" : "false"}`,
           { method: "POST", body: form },
         );
@@ -151,7 +197,7 @@ const IngestPage: React.FC = () => {
 
   const deleteDocument = async (docId: string) => {
     try {
-      const r = await fetch(`/api/documents/${docId}`, { method: "DELETE" });
+      const r = await apiFetch(`/api/documents/${docId}`, { method: "DELETE" });
       if (!r.ok) return;
       await loadDocuments();
     } catch {}
@@ -185,8 +231,12 @@ const IngestPage: React.FC = () => {
               >
                 Reset
               </button>
+              {streamBusy && (
+                <span className="text-xs text-gray-500">流式进行中...</span>
+              )}
             </div>
           </div>
+          {errMsg && <div className="mt-2 text-sm text-red-600">{errMsg}</div>}
         </div>
 
         <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-6">

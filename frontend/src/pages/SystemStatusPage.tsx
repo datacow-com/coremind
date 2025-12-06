@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
+
+const fetch = apiFetch;
 
 type Health = {
   app_up: boolean;
@@ -19,9 +23,9 @@ type WebProvidersStatus = {
 };
 
 export default function SystemStatusPage() {
+  const token = useAuthStore((s) => s.token);
   const [health, setHealth] = useState<Health | null>(null);
   const [validations, setValidations] = useState<ProviderValidation[]>([]);
-  const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [webStatus, setWebStatus] = useState<WebProvidersStatus | null>(null);
 
@@ -36,18 +40,6 @@ export default function SystemStatusPage() {
     };
     load();
   }, []);
-
-  const demoLogin = async () => {
-    try {
-      const r = await fetch("/api/auth/demo", { method: "POST" });
-      if (r.ok) {
-        const data = await r.json();
-        setToken(data.access_token);
-      }
-    } catch (e) {
-      setError("Demo login failed");
-    }
-  };
 
   const fetchWebProviders = async () => {
     try {
@@ -81,7 +73,7 @@ export default function SystemStatusPage() {
 
   const fetchProviders = async () => {
     if (!token) {
-      setError("Token required, please Demo Login");
+      setError("Token required, please登录后重试");
       return;
     }
     try {
@@ -129,12 +121,6 @@ export default function SystemStatusPage() {
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-md font-medium">Model Providers</h3>
           <div className="space-x-2">
-            <button
-              onClick={demoLogin}
-              className="px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300"
-            >
-              Demo Login
-            </button>
             <button
               onClick={fetchProviders}
               className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"

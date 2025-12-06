@@ -41,8 +41,11 @@ sync_engine = create_engine(
 )
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Get database session"""
+async def get_db() -> AsyncGenerator[AsyncSession | None, None]:
+    """Get database session (light mode friendly)"""
+    if not os.getenv("DATABASE_URL"):
+        yield None
+        return
     async with AsyncSessionLocal() as session:
         try:
             yield session

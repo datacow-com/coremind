@@ -43,7 +43,10 @@ class _TextExtractor(HTMLParser):
 
 
 async def read_html_to_md(state: HtmlIngestState) -> HtmlIngestState:
-    fp = state.get("file_path")
+    fp = state.get("file_path") or ""
+    if not fp:
+        state["md"] = state.get("md") or ""
+        return state
     md = ""
     try:
         with open(fp, encoding="utf-8", errors="ignore") as f:
@@ -71,16 +74,25 @@ async def store_md(state: HtmlIngestState) -> HtmlIngestState:
     m["md_path"] = out_md
     state["meta"] = m
     try:
-        from core.embedding.provider_embedder import Embedder
+        from core.embedding.registry import get_embedder
         from core.storage.index_router import add as index_add
-        from core.storage.keyword_index import get_keyword_index
 
         md_text = state.get("md") or ""
         paras = [p.strip() for p in md_text.split("\n\n") if p.strip()]
-        emb = Embedder(dim=256)
-        kw = get_keyword_index()
+        emb = get_embedder()
+        vecs = None
+        try:
+            vecs = await emb.embed_batch(paras) if hasattr(emb, "embed_batch") else None
+        except Exception:
+            vecs = None
         for i, chunk in enumerate(paras):
-            vec = emb.embed(chunk)
+            import asyncio
+
+            vec = None
+            if vecs is not None and len(vecs) > i:
+                vec = vecs[i]
+            else:
+                vec = await asyncio.to_thread(emb.embed, chunk)
             meta = {
                 "id": f"{state.get('file_path')}-chunk-{i}",
                 "content": chunk,
@@ -90,7 +102,6 @@ async def store_md(state: HtmlIngestState) -> HtmlIngestState:
                 "metadata": {"type": "html", "bbox": None, "confidence": 0.0},
             }
             index_add(vec, meta)
-            kw.add(chunk, meta)
     except Exception:
         pass
     return state

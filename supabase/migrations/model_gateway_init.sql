@@ -160,4 +160,3 @@ create table if not exists audit_logs (
 
 create index if not exists idx_audit_logs_resource on audit_logs(resource_id);
 create index if not exists idx_audit_logs_created on audit_logs(created_at);
-

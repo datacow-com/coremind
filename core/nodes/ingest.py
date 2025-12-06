@@ -9,7 +9,15 @@ async def ingest(state: RAGState) -> dict:
     docs = state.get("documents") or []
     chunks: list[ProcessedChunk] = []
     if docs:
-        loader = VisualPDFLoader(ParsingRule())
+        import os
+
+        from server.config import settings
+
+        sem = bool(
+            getattr(settings, "semantic_chunking", False) or os.environ.get("SEMANTIC_CHUNKING")
+        )
+        den = bool(getattr(settings, "parser_denoise", False) or os.environ.get("PARSER_DENOISE"))
+        loader = VisualPDFLoader(ParsingRule(semantic=sem, denoise=den))
         for d in docs:
             path = d.get("file_path") or ""
             if path:
@@ -18,7 +26,9 @@ async def ingest(state: RAGState) -> dict:
         emb = Embedder(dim=256)
         kw = get_keyword_index()
         for ch in chunks:
-            vec = emb.embed(ch.get("content", ""))
+            import asyncio
+
+            vec = await asyncio.to_thread(emb.embed, ch.get("content", ""))
             add_index(
                 vec,
                 {
@@ -42,3 +52,11 @@ async def ingest(state: RAGState) -> dict:
                 },
             )
     return {"chunks": chunks, "step": "ingestion"}
+
+
+import asyncio
+
+try:
+    asyncio.get_event_loop()
+except Exception:
+    asyncio.set_event_loop(asyncio.new_event_loop())

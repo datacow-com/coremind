@@ -34,11 +34,16 @@ repos:
     hooks:
       - id: python-syntax-compile
         name: python-syntax-compile
-        entry: bash -lc 'python -m py_compile "$@"'
+        entry: bash -lc 'python scripts/check_python_syntax.py "$@"'
         language: system
         files: ^(core|server)/.+\.py$
         pass_filenames: true
-      
+
+      - id: frontend-prettier
+        name: frontend-prettier
+        entry: bash -lc 'if [ $# -eq 0 ]; then exit 0; fi; npx --prefix frontend prettier --write "$@"'
+        language: system
+        files: ^frontend/.+\.(js|jsx|ts|tsx|json|css|md)$
       - id: frontend-eslint
         name: frontend-eslint
         entry: bash -lc 'cd frontend && npm run lint'
@@ -49,6 +54,11 @@ repos:
         entry: bash -lc 'cd frontend && npm run type-check'
         language: system
         pass_filenames: false
+      - id: embedded-ui-prettier
+        name: embedded-ui-prettier
+        entry: bash -lc 'if [ $# -eq 0 ]; then exit 0; fi; npx --prefix apps/embedded-ui prettier --write "$@"'
+        language: system
+        files: ^apps/embedded-ui/.+\.(js|jsx|ts|tsx|json|css|md)$
       - id: embedded-ui-eslint
         name: embedded-ui-eslint
         entry: bash -lc 'cd apps/embedded-ui && npm run lint'
@@ -59,13 +69,3 @@ repos:
         entry: bash -lc 'cd apps/embedded-ui && npm run type-check'
         language: system
         pass_filenames: false
-      - id: frontend-prettier
-        name: frontend-prettier
-        entry: bash -lc 'npx --prefix frontend prettier --write "$@"'
-        language: system
-        files: ^frontend/.+\.(js|jsx|ts|tsx|json|css|md)$
-      - id: embedded-ui-prettier
-        name: embedded-ui-prettier
-        entry: bash -lc 'npx --prefix apps/embedded-ui prettier --write "$@"'
-        language: system
-        files: ^apps/embedded-ui/.+\.(js|jsx|ts|tsx|json|css|md)$

@@ -29,4 +29,3 @@ echo "Frontend:  http://localhost:${FRONTEND_PORT}"
 echo "Embedded:  http://localhost:${EMBEDDED_PORT}"
 
 wait
-

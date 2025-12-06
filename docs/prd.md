@@ -3,12 +3,13 @@
 本设计完全基于**“市场痛点导向”，融合了 RAGFlow 的深度解析能力、Dify 的灵活编排能力以及 MaxKB 的开箱即用体验。它不是简单的拼接，而是基于 LangGraph 架构的有机整合，旨在构建一个全生态、可进化**的智能知识中台。
 
 产品需求文档 (PRD): CoreMind RAG - 下一代智能知识中台
-文档属性	详情
-产品代号	CoreMind (核心智脑)
-版本号	V1.0 (MVP) -> V2.0 (Platform)
-文档状态	Final / Execution Ready
-主要贡献者	Product Lead, System Architect
-核心依赖	LangGraph (编排), Gemini 3 (推理/视觉), Milvus (存储)
+文档属性 详情
+产品代号 CoreMind (核心智脑)
+版本号 V1.0 (MVP) -> V2.0 (Platform)
+文档状态 Final / Execution Ready
+主要贡献者 Product Lead, System Architect
+核心依赖 LangGraph (编排), Gemini 3 (推理/视觉), Milvus (存储)
+
 1. 市场洞察与用户心声 (Market & User Voice)
 
 在设计功能之前，我们必须直面当前 RAG 市场的真实痛点。这是我们“极高价值”的来源。
@@ -44,7 +45,7 @@ L3 交互与服务层 (Interaction): Chat UI + Management Console (对标 MaxKB)
 L4 生态接口层 (Service): OpenAPI Gateway + Plugin System。
 
 3. 详细功能需求 (Functional Requirements)
-3.1 核心模块一：视觉驱动的数据解析 (Visual Ingestion Engine)
+   3.1 核心模块一：视觉驱动的数据解析 (Visual Ingestion Engine)
 
 优先级：P0 | 核心对标：RAGFlow
 
@@ -161,7 +162,7 @@ Token 消耗统计。
 点踩优化：用户“点踩”的记录，自动加入“负样本池”，用于优化下一次检索。
 
 4. 非功能性需求 (NFR) - 高性能与安全
-4.1 性能指标 (Performance)
+   4.1 性能指标 (Performance)
 
 解析延迟：PDF 解析速度 < 3秒/页（开启 GPU 加速）。
 

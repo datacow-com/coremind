@@ -2,7 +2,6 @@ import os
 import zipfile
 from typing import Any
 
-from defusedxml import ElementTree as ET
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph
 from typing_extensions import TypedDict
@@ -14,7 +13,7 @@ class DocxIngestState(TypedDict):
     meta: dict[str, Any]
 
 
-def _text_elems(elem: ET.Element) -> list[str]:
+def _text_elems(elem) -> list[str]:
     texts: list[str] = []
     for t in elem.findall(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"):
         if t.text:
@@ -23,6 +22,10 @@ def _text_elems(elem: ET.Element) -> list[str]:
 
 
 def _parse_docx_xml(xml_bytes: bytes) -> str:
+    try:
+        from defusedxml import ElementTree as ET
+    except Exception:
+        import xml.etree.ElementTree as ET
     md_lines: list[str] = []
     try:
         root = ET.fromstring(xml_bytes)
@@ -64,7 +67,10 @@ def _parse_docx_xml(xml_bytes: bytes) -> str:
 
 
 async def read_docx_to_md(state: DocxIngestState) -> DocxIngestState:
-    fp = state.get("file_path")
+    fp = state.get("file_path") or ""
+    if not fp:
+        state["md"] = state.get("md") or ""
+        return state
     md = ""
     try:
         with zipfile.ZipFile(fp, "r") as z:
@@ -90,16 +96,25 @@ async def store_md(state: DocxIngestState) -> DocxIngestState:
     state["meta"] = m
     # write to index
     try:
-        from core.embedding.provider_embedder import Embedder
+        from core.embedding.registry import get_embedder
         from core.storage.index_router import add as index_add
-        from core.storage.keyword_index import get_keyword_index
 
         md_text = state.get("md") or ""
         paras = [p.strip() for p in md_text.split("\n\n") if p.strip()]
-        emb = Embedder(dim=256)
-        kw = get_keyword_index()
+        emb = get_embedder()
+        vecs = None
+        try:
+            vecs = await emb.embed_batch(paras) if hasattr(emb, "embed_batch") else None
+        except Exception:
+            vecs = None
         for i, chunk in enumerate(paras):
-            vec = emb.embed(chunk)
+            import asyncio
+
+            vec = None
+            if vecs is not None and len(vecs) > i:
+                vec = vecs[i]
+            else:
+                vec = await asyncio.to_thread(emb.embed, chunk)
             meta = {
                 "id": f'{state.get("file_path")}-chunk-{i}',
                 "content": chunk,
@@ -109,7 +124,6 @@ async def store_md(state: DocxIngestState) -> DocxIngestState:
                 "metadata": {"type": "docx", "bbox": None, "confidence": 0.0},
             }
             index_add(vec, meta)
-            kw.add(chunk, meta)
     except Exception:
         pass
     return state

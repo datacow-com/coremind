@@ -16,10 +16,17 @@ class Reranker:
             self._ce = None
 
     def _fallback_scores(self, query: str, texts: list[str]) -> list[float]:
-        q = set([w for w in query.lower().split() if w])
+        import re
+
+        def norm(s: str) -> list[str]:
+            s = (s or "").lower()
+            s = re.sub(r"[\.,;:!\?\-_/\\\(\)\[\]{}<>\|\^\$\*\+\=\"]", " ", s)
+            return [w for w in s.split() if w]
+
+        q = set(norm(query))
         out: list[float] = []
         for t in texts:
-            T = set([w for w in (t or "").lower().split() if w])
+            T = set(norm(t or ""))
             if not q:
                 out.append(0.0)
             else:

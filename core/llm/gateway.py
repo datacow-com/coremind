@@ -1,33 +1,79 @@
 import json
 import os
-
+import time
+import asyncio
+from typing import Optional, Tuple, List
+from sqlalchemy.future import select
+from server.database import AsyncSessionLocal
+from server.models import Provider, ModelConfig
 from server.config import settings
-
+from core.utils.trace import set_span_attrs
 
 class LLMGateway:
-    def __init__(self, provider: str | None = None, model: str | None = None):
-        self.provider = provider or (settings.llm_provider or "gemini")
-        self.model = model
+    def __init__(self, provider: Optional[str] = None, model: Optional[str] = None):
+        # 优先使用参数，其次 settings 默认值
+        self.default_provider_name = provider or settings.llm_provider or "openai"
+        self.default_model_name = model
+        self.http_timeout = float(os.environ.get("LLM_HTTP_TIMEOUT", "60"))
+        self._cb_state: dict[str, list[float]] = {}  # provider -> list of fail timestamps
+        self._cb_cooldown: dict[str, float] = {}  # provider -> next allow timestamp
+        # 按模型降级链（可由上层注入）
+        self.fallback_models: List[str] = []
 
+    async def _get_model_config(self, provider_name: str, model_name: Optional[str]) -> Tuple[Optional[Provider], Optional[ModelConfig]]:
+        """从数据库加载模型配置，优先模型 ID 直查，其次 provider+default"""
+        async with AsyncSessionLocal() as session:
+            # 先按模型 ID 直接查（避免 provider 名大小写不一致导致 miss）
+            if model_name:
+                res = await session.execute(select(ModelConfig).where(
+                    ModelConfig.model_id == model_name,
+                    ModelConfig.is_active == True
+                ))
+                model = res.scalars().first()
+                if model:
+                    res_prov = await session.execute(select(Provider).where(
+                        Provider.id == model.provider_id,
+                        Provider.is_active == True
+                    ))
+                    provider = res_prov.scalars().first()
+                    return provider, model
+
+            # 再按 provider 兜底
+            res = await session.execute(select(Provider).where(
+                Provider.name.ilike(provider_name),
+                Provider.is_active == True
+            ))
+            provider = res.scalars().first()
+            if not provider:
+                return None, None
+            
+            # 查找指定模型或默认模型
+            if model_name:
+                res = await session.execute(select(ModelConfig).where(
+                    ModelConfig.provider_id == provider.id, 
+                    ModelConfig.model_id == model_name,
+                    ModelConfig.is_active == True
+                ))
+                model = res.scalars().first()
+            else:
+                res = await session.execute(select(ModelConfig).where(
+                    ModelConfig.provider_id == provider.id, 
+                    ModelConfig.is_default == True,
+                    ModelConfig.is_active == True
+                ))
+                model = res.scalars().first()
+            return provider, model
+
+    # ... (保留 _usage_dir, _record_usage, _cb_allowed, _cb_on_fail, _cb_on_success, _http_retry 方法) ...
+    
     def _usage_dir(self) -> str:
         base = getattr(settings, "usage_dir_resolved", os.path.join(os.getcwd(), "data", "usage"))
         os.makedirs(base, exist_ok=True)
         return base
 
-    def _record_usage(
-        self,
-        kind: str,
-        provider: str,
-        model: str,
-        tokens_in: int,
-        tokens_out: int,
-        duration_ms: int,
-    ) -> None:
+    def _record_usage(self, kind, provider, model, tokens_in, tokens_out, duration_ms):
         import json
         import time
-
-        import httpx
-
         path = os.path.join(self._usage_dir(), "usage.jsonl")
         rec = {
             "ts": int(time.time()),
@@ -43,407 +89,120 @@ class LLMGateway:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except Exception:
             pass
-        # Threshold check and webhook (file-based fallback, settings override)
-        try:
-            th_path = os.path.join(self._usage_dir(), "thresholds.json")
-            th = None
-            if os.path.exists(th_path):
-                with open(th_path, encoding="utf-8") as tf:
-                    th = json.load(tf)
-            else:
-                th = {
-                    "max_tokens_per_day": int(getattr(settings, "max_tokens_per_day", 0) or 0),
-                    "max_calls_per_day": int(getattr(settings, "max_calls_per_day", 0) or 0),
-                    "max_cost_per_day": float(getattr(settings, "max_cost_per_day", 0.0) or 0.0),
-                    "webhook_url": getattr(
-                        settings, "alert_webhook_url", os.environ.get("ALERT_WEBHOOK_URL")
-                    ),
-                }
 
-            day = time.strftime("%Y-%m-%d", time.gmtime(rec["ts"]))
-            agg_tokens = 0
-            agg_calls = 0
-            agg_cost = 0.0
+    def _cb_allowed(self, provider: str) -> bool:
+        now = time.time()
+        next_allow = self._cb_cooldown.get(provider)
+        if next_allow and now < next_allow:
+            return False
+        return True
+
+    def _cb_on_fail(self, provider: str) -> None:
+        now = time.time()
+        window = 60.0
+        max_fail = 3
+        fails = [t for t in self._cb_state.get(provider, []) if now - t <= window]
+        fails.append(now)
+        self._cb_state[provider] = fails
+        if len(fails) >= max_fail:
+            self._cb_cooldown[provider] = now + 30.0
+
+    def _cb_on_success(self, provider: str) -> None:
+        self._cb_state.pop(provider, None)
+        self._cb_cooldown.pop(provider, None)
+
+    def _http_retry(self, fn, attempts: int = 2, backoff_ms: int = 500):
+        last_err = None
+        for i in range(attempts + 1):
             try:
-                with open(path, encoding="utf-8") as rf:
-                    for line in rf:
-                        try:
-                            x = json.loads(line.strip())
-                            d = time.strftime("%Y-%m-%d", time.gmtime(x.get("ts", rec["ts"])))
-                            if d == day:
-                                agg_calls += 1
-                                agg_tokens += int(x.get("tokens_in") or 0) + int(
-                                    x.get("tokens_out") or 0
-                                )
-                                prov = (x.get("provider") or "").lower()
-                                cpk = (
-                                    float(os.environ.get("COST_PER_1K_TOKENS_DASHSCOPE", "0"))
-                                    if prov == "dashscope"
-                                    else float(os.environ.get("COST_PER_1K_TOKENS_ARK", "0"))
-                                    if prov in {"ark", "volcengine"}
-                                    else float(os.environ.get("COST_PER_1K_TOKENS_OPENAI", "0"))
-                                    if prov == "openai"
-                                    else float(os.environ.get("COST_PER_1K_TOKENS_GEMINI", "0"))
-                                    if prov == "gemini"
-                                    else float(os.environ.get("COST_PER_1K_TOKENS_OLLAMA", "0"))
-                                    if prov == "ollama"
-                                    else float(os.environ.get("USAGE_COST_PER_1K_TOKENS", "0"))
-                                )
-                                agg_cost += (
-                                    (int(x.get("tokens_in") or 0) + int(x.get("tokens_out") or 0))
-                                    / 1000.0
-                                ) * cpk
-                        except Exception:
-                            continue
-            except Exception:
-                pass
-            exceed = (
-                (
-                    int(th.get("max_tokens_per_day") or 0)
-                    and agg_tokens >= int(th.get("max_tokens_per_day") or 0)
-                )
-                or (
-                    int(th.get("max_calls_per_day") or 0)
-                    and agg_calls >= int(th.get("max_calls_per_day") or 0)
-                )
-                or (
-                    float(th.get("max_cost_per_day") or 0.0)
-                    and agg_cost >= float(th.get("max_cost_per_day") or 0.0)
-                )
-            )
-            webhook = th.get("webhook_url")
-            if exceed and webhook:
-                payload = {
-                    "day": day,
-                    "calls": agg_calls,
-                    "tokens": agg_tokens,
-                    "cost": round(agg_cost, 6),
-                    "provider": provider,
-                    "model": model,
-                    "kind": kind,
-                    "msg": "Threshold exceeded",
-                }
-                try:
-                    with httpx.Client(timeout=5.0) as http:
-                        http.post(webhook, json=payload)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                return fn()
+            except Exception as err:
+                last_err = err
+                if i >= attempts:
+                    break
+                time.sleep((backoff_ms * (2**i)) / 1000)
+        if last_err:
+            raise last_err
 
-    async def chat(self, prompt: str, context: str | None = None) -> str:
-        import time
-
+    async def chat(self, prompt: str, context: Optional[str] = None) -> str:
         t0 = time.perf_counter()
-        p = self.provider.lower()
-        if p == "openai" and os.environ.get("OPENAI_API_KEY"):
-            try:
-                from openai import OpenAI
+        
+        # Load config from DB
+        prov, mdl = await self._get_model_config(self.default_provider_name, self.default_model_name)
 
-                oa = OpenAI()
-                mdl = self.model or os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
-                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                resp = oa.chat.completions.create(
-                    model=mdl,
-                    messages=[{"role": "user", "content": content}],
-                    temperature=float(settings.chat_temperature),
-                )
-                out = (resp.choices[0].message.content or "").strip()
-                dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage("chat", p, mdl, len(content) // 4, len(out) // 4, dur)
-                return out
-            except Exception:
-                pass
-        if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
-            try:
-                import google.generativeai as genai
+        # 若主模型缺失，尝试降级链
+        if not prov or not mdl:
+            for mid in self.fallback_models:
+                prov_f, mdl_f = await self._get_model_config(self.default_provider_name, mid)
+                if prov_f and mdl_f:
+                    prov, mdl = prov_f, mdl_f
+                    break
 
-                genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-                mdl = self.model or os.environ.get("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
-                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                model = genai.GenerativeModel(mdl)
-                resp = model.generate_content(content)
-                out = getattr(resp, "text", "").strip()
-                dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage("chat", p, mdl, len(content) // 4, len(out) // 4, dur)
-                return out
-            except Exception:
-                pass
-        if p == "openrouter" and os.environ.get("OPENROUTER_API_KEY"):
-            try:
-                import httpx
+        # 未找到任何可用模型，显式报错，避免沉默
+        if not prov or not mdl:
+            err_msg = "No active LLM model found in DB (provider/model missing)."
+            set_span_attrs({"llm.error": err_msg})
+            raise RuntimeError(err_msg)
 
-                mdl = self.model or os.environ.get(
-                    "OPENROUTER_CHAT_MODEL", "meta-llama/llama-3.1-8b-instruct"
-                )
-                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                headers = {
-                    "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
-                    "Content-Type": "application/json",
-                }
-                payload = {
-                    "model": mdl,
-                    "messages": [{"role": "user", "content": content}],
-                }
-                with httpx.Client(timeout=20.0) as http:
-                    r = http.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers=headers,
-                        json=payload,
-                    )
-                    if r.status_code == 200:
-                        data = r.json()
-                        out = (data["choices"][0]["message"]["content"] or "").strip()
-                        dur = int((time.perf_counter() - t0) * 1000)
-                        self._record_usage("chat", p, mdl, len(content) // 4, len(out) // 4, dur)
-                        return out
-            except Exception:
-                pass
-        if p == "ollama" or os.environ.get("OLLAMA_URL"):
-            try:
-                import httpx
-
-                base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-                mdl = self.model or os.environ.get("OLLAMA_MODEL", "qwen2:7b")
-                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                payload = {"model": mdl, "prompt": content, "stream": False}
-                with httpx.Client(timeout=20.0) as http:
-                    r = http.post(f"{base}/api/generate", json=payload)
-                    if r.status_code == 200:
-                        data = r.json()
-                        out = (data.get("response") or "").strip()
-                        dur = int((time.perf_counter() - t0) * 1000)
-                        self._record_usage(
-                            "chat", "ollama", mdl, len(content) // 4, len(out) // 4, dur
-                        )
-                        return out
-            except Exception:
-                pass
-        # fallback
-        return ""
-
-    async def stream_chat(self, prompt: str, context: str | None = None):
-        import time
-
-        t0 = time.perf_counter()
-        p = self.provider.lower()
-        acc = []
-        if p == "openai" and os.environ.get("OPENAI_API_KEY"):
-            try:
-                from openai import OpenAI
-
-                oa = OpenAI()
-                mdl = self.model or os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
-                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                stream = oa.chat.completions.create(
-                    model=mdl,
-                    messages=[{"role": "user", "content": content}],
-                    temperature=float(settings.chat_temperature),
-                    stream=True,
-                )
-                for ev in stream:
-                    try:
-                        delta = ev.choices[0].delta.content
-                        if delta:
-                            acc.append(delta)
-                            yield delta
-                    except Exception:
-                        continue
-                out = "".join(acc)
-                dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage("chat_stream", p, mdl, len(content) // 4, len(out) // 4, dur)
-                return
-            except Exception:
-                pass
-        if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
-            try:
-                import google.generativeai as genai
-
-                genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-                mdl = self.model or os.environ.get("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
-                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                model = genai.GenerativeModel(mdl)
-                resp = model.generate_content(content, stream=True)
-                for ch in resp:
-                    txt = getattr(ch, "text", "")
-                    if txt:
-                        acc.append(txt)
-                        yield txt
-                out = "".join(acc)
-                dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage("chat_stream", p, mdl, len(content) // 4, len(out) // 4, dur)
-                return
-            except Exception:
-                pass
-        if p == "ollama" or os.environ.get("OLLAMA_URL"):
-            try:
-                import httpx
-
-                base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-                mdl = self.model or os.environ.get("OLLAMA_MODEL", "qwen2:7b")
-                content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-                payload = {"model": mdl, "prompt": content, "stream": True}
-                acc = []
-                with httpx.Client(timeout=20.0) as http:
-                    with http.stream("POST", f"{base}/api/generate", json=payload) as resp:
-                        for chunk in resp.iter_lines():
-                            try:
-                                if not chunk:
-                                    continue
-                                jd = json.loads(chunk)
-                                delta = jd.get("response")
-                                if delta:
-                                    acc.append(delta)
-                                    yield delta
-                            except Exception:
-                                continue
-                out = "".join(acc)
-                dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage(
-                    "chat_stream", "ollama", mdl, len(content) // 4, len(out) // 4, dur
-                )
-                return
-            except Exception:
-                pass
-        # fallback: yield final answer once
-        ans = await self.chat(prompt=prompt, context=context)
-        if ans:
-            dur = int((time.perf_counter() - t0) * 1000)
-            self._record_usage(
-                "chat_stream", p, self.model or "", len(prompt) // 4, len(ans) // 4, dur
-            )
-            yield ans
-
-    async def vision_markdown(
-        self, image_bytes: bytes, prompt: str, model: str | None = None
-    ) -> str:
-        import time
-
-        t0 = time.perf_counter()
-        p = self.provider
-        # DashScope (Qwen-VL compatible-mode)
-        if p == "dashscope" and os.environ.get("DASHSCOPE_API_KEY"):
-            import base64
-
-            import httpx
-
-            key = os.environ.get("DASHSCOPE_API_KEY")
-            url = os.environ.get(
-                "DASHSCOPE_COMPAT_URL",
-                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-            )
-            mdl = model or self.model or os.environ.get("DASHSCOPE_VISION_MODEL", "qwen-plus")
-            b64 = base64.b64encode(image_bytes).decode("utf-8")
-            body = {
-                "model": mdl,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "input_image", "image_url": f"data:image/png;base64,{b64}"},
-                        ],
-                    }
-                ],
-                "stream": False,
-                "max_tokens": int(os.environ.get("VISION_MAX_TOKENS", "2000")),
+        # Use DB Config
+        import httpx
+        
+        api_key = prov.api_key
+        base_url = prov.base_url
+        model_id = mdl.model_id
+        
+        # OpenAI-compatible generic handler
+        if prov.category == 'llm':
+            content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
             }
-            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    r = await client.post(url, headers=headers, json=body)
+            
+            # Adjust headers/url for specific providers if needed based on provider name
+            if prov.name.lower() == 'dashscope':
+                # DashScope specific
+                pass # Usually compatible if using compat url
+            
+            # Construct request
+            url = f"{base_url.rstrip('/')}/chat/completions"
+            # Handle DashScope compat URL quirk if base_url is raw
+            if "dashscope" in base_url and "compatible-mode" not in base_url:
+                 url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+
+            body = {
+                "model": model_id,
+                "messages": [{"role": "user", "content": content}],
+                "stream": False
+            }
+            
+            # Merge parameters
+            if mdl and mdl.parameters:
+                body.update(mdl.parameters)
+
+            def _req():
+                if not self._cb_allowed(prov.name):
+                    raise RuntimeError("circuit open")
+                with httpx.Client(timeout=self.http_timeout) as http:
+                    r = http.post(url, headers=headers, json=body)
                     r.raise_for_status()
                     data = r.json()
-                    out = (
-                        ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
-                    ).strip()
-                    dur = int((time.perf_counter() - t0) * 1000)
-                    self._record_usage("vision", p, mdl, len(prompt) // 4, len(out) // 4, dur)
-                    return out
-            except Exception:
-                return ""
-        # Volcengine Ark (compatible-mode)
-        if p in {"ark", "volcengine"} and os.environ.get("VOLCENGINE_API_KEY"):
-            import base64
+                    return data["choices"][0]["message"]["content"].strip()
 
-            import httpx
-
-            key = os.environ.get("VOLCENGINE_API_KEY")
-            url = os.environ.get(
-                "VOLCENGINE_COMPAT_URL", "https://api.ark.cn-beijing.volces.com/v3/chat/completions"
-            )
-            mdl = (
-                model
-                or self.model
-                or os.environ.get(
-                    "VOLCENGINE_VISION_MODEL", os.environ.get("ARK_VISION_MODEL", "ep-vision")
-                )
-            )
-            b64 = base64.b64encode(image_bytes).decode("utf-8")
-            body = {
-                "model": mdl,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "input_image", "image_url": f"data:image/png;base64,{b64}"},
-                        ],
-                    }
-                ],
-                "stream": False,
-                "max_tokens": int(os.environ.get("VISION_MAX_TOKENS", "2000")),
-            }
-            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    r = await client.post(url, headers=headers, json=body)
-                    r.raise_for_status()
-                    data = r.json()
-                    out = (
-                        ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")
-                    ).strip()
-                    dur = int((time.perf_counter() - t0) * 1000)
-                    self._record_usage("vision", p, mdl, len(prompt) // 4, len(out) // 4, dur)
-                    return out
-            except Exception:
-                return ""
-        # Gemini vision (fallback if explicitly set)
-        if p == "gemini" and os.environ.get("GEMINI_API_KEY"):
-            import google.generativeai as genai
-
-            genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-            try:
-                mdl = (
-                    model or self.model or os.environ.get("GEMINI_VISION_MODEL", "gemini-1.5-flash")
-                )
-                gg = genai.GenerativeModel(mdl)
-                resp = gg.generate_content(
-                    [
-                        {
-                            "role": "user",
-                            "parts": [
-                                prompt,
-                                {"mime_type": "image/png", "data": image_bytes},
-                            ],
-                        }
-                    ]
-                )
-                out = getattr(resp, "text", "").strip()
+                out = await asyncio.to_thread(self._http_retry, _req)
                 dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage(
-                    "vision",
-                    p,
-                    (model or self.model or "gemini-1.5-flash"),
-                    len(prompt) // 4,
-                    len(out) // 4,
-                    dur,
-                )
+                self._record_usage("chat", prov.name, model_id, len(content)//4, len(out)//4, dur)
+                self._cb_on_success(prov.name)
                 return out
-            except Exception:
-                return ""
+            except Exception as e:
+                self._cb_on_fail(prov.name)
+                set_span_attrs({"llm.error": str(e), "llm.provider": prov.name})
+                raise
+                
         return ""
 
-    async def vision_table_markdown(self, image_bytes: bytes, model: str | None = None) -> str:
-        prompt = "将此表格图片转换为Markdown表格，确保数值精确，保留合并单元格结构。"
-        return await self.vision_markdown(image_bytes=image_bytes, prompt=prompt, model=model)
+    async def health_check(self, provider: Optional[str] = None, model: Optional[str] = None) -> bool:
+        """简单健康检查：尝试从 DB 读取配置并返回存在性"""
+        prov, mdl = await self._get_model_config(provider or self.default_provider_name, model or self.default_model_name)
+        return bool(prov and mdl)

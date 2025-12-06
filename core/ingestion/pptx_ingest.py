@@ -2,7 +2,6 @@ import os
 import zipfile
 from typing import Any
 
-from defusedxml import ElementTree as ET
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph
 from typing_extensions import TypedDict
@@ -16,6 +15,10 @@ class PptxIngestState(TypedDict):
 
 def _slide_text(xml_bytes: bytes) -> list[str]:
     try:
+        from defusedxml import ElementTree as ET
+    except Exception:
+        import xml.etree.ElementTree as ET
+    try:
         root = ET.fromstring(xml_bytes)
     except Exception:
         return []
@@ -28,7 +31,10 @@ def _slide_text(xml_bytes: bytes) -> list[str]:
 
 
 async def read_pptx_to_md(state: PptxIngestState) -> PptxIngestState:
-    fp = state.get("file_path")
+    fp = state.get("file_path") or ""
+    if not fp:
+        state["md"] = state.get("md") or ""
+        return state
     md_lines: list[str] = []
     try:
         with zipfile.ZipFile(fp, "r") as z:
@@ -63,16 +69,25 @@ async def store_md(state: PptxIngestState) -> PptxIngestState:
     state["meta"] = m
     # write to index
     try:
-        from core.embedding.provider_embedder import Embedder
+        from core.embedding.registry import get_embedder
         from core.storage.index_router import add as index_add
-        from core.storage.keyword_index import get_keyword_index
 
         md_text = state.get("md") or ""
         paras = [p.strip() for p in md_text.split("\n\n") if p.strip()]
-        emb = Embedder(dim=256)
-        kw = get_keyword_index()
+        emb = get_embedder()
+        vecs = None
+        try:
+            vecs = await emb.embed_batch(paras) if hasattr(emb, "embed_batch") else None
+        except Exception:
+            vecs = None
+        import asyncio
+
         for i, chunk in enumerate(paras):
-            vec = emb.embed(chunk)
+            vec = None
+            if vecs is not None and len(vecs) > i:
+                vec = vecs[i]
+            else:
+                vec = await asyncio.to_thread(emb.embed, chunk)
             meta = {
                 "id": f'{state.get("file_path")}-chunk-{i}',
                 "content": chunk,
@@ -82,7 +97,6 @@ async def store_md(state: PptxIngestState) -> PptxIngestState:
                 "metadata": {"type": "pptx", "bbox": None, "confidence": 0.0},
             }
             index_add(vec, meta)
-            kw.add(chunk, meta)
     except Exception:
         pass
     return state
