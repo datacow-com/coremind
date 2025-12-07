@@ -18,8 +18,8 @@ type ThoughtEvent = {
 };
 
 const IngestPage: React.FC = () => {
-  const [indexEnabled, setIndexEnabled] = useState<boolean>(true);
-  const [useStream, setUseStream] = useState<boolean>(true);
+  const [indexEnabled] = useState<boolean>(false);
+  const [useStream] = useState<boolean>(false);
   const [mdPreview, setMdPreview] = useState<string>("");
   const [mdPath, setMdPath] = useState<string>("");
   const [, setLastDocId] = useState<string>("");
@@ -54,23 +54,49 @@ const IngestPage: React.FC = () => {
     setEvents([]);
   };
 
+  const scenarioByExt: Record<string, string> = {
+    pdf: "paper",
+    html: "html",
+    htm: "html",
+    png: "table",
+    jpg: "table",
+    jpeg: "table",
+    webp: "table",
+  };
+
+  const streamUpload = async (file: File, scenario?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (scenario) form.append("scenario", scenario);
+    setEvents([]);
+    await runStream(
+      "/api/ingest/upload_run/stream",
+      { method: "POST", body: form },
+      {
+        onEvent: (evt) => {
+          if (evt?.node) {
+            setEvents((prev) =>
+              [...prev, { phase: evt.node, status: evt.type }].slice(-50),
+            );
+          } else if (evt?.type === "complete") {
+            setEvents((prev) =>
+              [...prev, { phase: "complete", status: "end" }].slice(-50),
+            );
+          } else if (evt?.error) {
+            setErrMsg(String(evt.error));
+          }
+        },
+        onError: (err) => setErrMsg(err?.message || String(err)),
+      },
+    );
+  };
+
   const handleAutoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || busy || streamBusy) return;
     setErrMsg("");
     const ck = checkFile(file, {
-      exts: [
-        "pdf",
-        "png",
-        "jpg",
-        "jpeg",
-        "md",
-        "docx",
-        "pptx",
-        "xlsx",
-        "html",
-        "eml",
-      ],
+      exts: ["pdf", "png", "jpg", "jpeg", "webp", "html", "htm"],
     });
     if (!ck.ok) {
       setErrMsg(ck.error || "文件校验失败");
@@ -80,18 +106,10 @@ const IngestPage: React.FC = () => {
     }
     resetPreview();
     setBusy(true);
-    const form = new FormData();
-    form.append("file", file);
     try {
-      const res = await apiFetch(
-        `/api/ingest/auto?index=${indexEnabled ? "true" : "false"}`,
-        { method: "POST", body: form },
-      );
-      if (!res.ok) throw new Error("ingest failed");
-      const data = await res.json();
-      setMdPreview(String(data.md || ""));
-      setMdPath(String(data.md_path || ""));
-      setLastDocId(String(data.document_id || ""));
+      const ext = (file.name.split(".").pop() || "").toLowerCase();
+      const scenario = scenarioByExt[ext];
+      await streamUpload(file, scenario);
     } catch {
     } finally {
       setBusy(false);
@@ -100,67 +118,14 @@ const IngestPage: React.FC = () => {
     }
   };
 
-  const streamUpload = async (endpoint: string, file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    const url = `/api/ingest/${endpoint}/stream?index=${indexEnabled ? "true" : "false"}`;
-    await runStream(
-      url,
-      { method: "POST", body: form },
-      {
-        onEvent: (evt) => {
-          if (evt.type === "phase" || evt.phase) {
-            const ph = evt.name || evt.phase;
-            const st = evt.status || "end";
-            const m = evt.metrics || {};
-            setEvents((prev) =>
-              [
-                ...prev,
-                { phase: String(ph), status: String(st), metrics: m },
-              ].slice(-20),
-            );
-          } else if (
-            evt.type === "final" ||
-            evt.md ||
-            evt.md_path ||
-            evt.document_id
-          ) {
-            setMdPreview(String(evt.md || ""));
-            setMdPath(String(evt.md_path || ""));
-            setLastDocId(String(evt.document_id || ""));
-          } else if (evt.error) {
-            setMdPreview(`Error: ${String(evt.error)}`);
-            push({
-              title: "摄取失败",
-              description: String(evt.error),
-              variant: "error",
-            });
-          }
-        },
-        onError: (err) => {
-          push({
-            title: "摄取流中断",
-            description: err?.message || "请重试",
-            variant: "error",
-          });
-        },
-      },
-    );
-  };
-
   const handleTypedUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || busy || streamBusy) return;
     setErrMsg("");
     const extMap: Record<string, string[]> = {
       pdf: ["pdf"],
-      image: ["png", "jpg", "jpeg"],
-      markdown: ["md"],
-      docx: ["docx"],
-      pptx: ["pptx"],
-      xlsx: ["xlsx"],
+      image: ["png", "jpg", "jpeg", "webp"],
       html: ["html", "htm"],
-      eml: ["eml"],
     };
     const ck = checkFile(file, { exts: extMap[typedEndpoint] || [] });
     if (!ck.ok) {
@@ -172,21 +137,9 @@ const IngestPage: React.FC = () => {
     resetPreview();
     setBusy(true);
     try {
-      if (useStream) {
-        await streamUpload(typedEndpoint, file);
-      } else {
-        const form = new FormData();
-        form.append("file", file);
-        const res = await apiFetch(
-          `/api/ingest/${typedEndpoint}?index=${indexEnabled ? "true" : "false"}`,
-          { method: "POST", body: form },
-        );
-        if (!res.ok) throw new Error("ingest failed");
-        const data = await res.json();
-        setMdPreview(String(data.md || ""));
-        setMdPath(String(data.md_path || ""));
-        setLastDocId(String(data.document_id || ""));
-      }
+      const ext = (file.name.split(".").pop() || "").toLowerCase();
+      const scenario = scenarioByExt[ext];
+      await streamUpload(file, scenario);
     } catch {
     } finally {
       setBusy(false);
@@ -213,18 +166,6 @@ const IngestPage: React.FC = () => {
               <h2 className="text-lg font-semibold text-gray-800">Ingestion</h2>
             </div>
             <div className="flex items-center space-x-3">
-              <label className="text-sm text-gray-700">Index</label>
-              <input
-                type="checkbox"
-                checked={indexEnabled}
-                onChange={(e) => setIndexEnabled(e.target.checked)}
-              />
-              <label className="text-sm text-gray-700">Stream</label>
-              <input
-                type="checkbox"
-                checked={useStream}
-                onChange={(e) => setUseStream(e.target.checked)}
-              />
               <button
                 onClick={resetPreview}
                 className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
@@ -260,7 +201,8 @@ const IngestPage: React.FC = () => {
               />
             </div>
             <div className="p-4 text-sm text-gray-600">
-              按扩展名自动选择 PDF/图片/Markdown/Office/HTML/EML 摄取管线
+              上传后通过新管线流式处理，实时展示进度；仅支持
+              PDF/图片/HTML，其他格式请先转 PDF/HTML
             </div>
           </div>
 
@@ -268,7 +210,9 @@ const IngestPage: React.FC = () => {
             <div className="p-4 border-b flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <PlayCircle className="h-4 w-4" />
-                <span className="font-medium">按类型摄取</span>
+                <span className="font-medium">
+                  按类型摄取（仅支持 PDF/图片/HTML）
+                </span>
               </div>
               <div className="flex items-center space-x-2">
                 <select
@@ -278,12 +222,22 @@ const IngestPage: React.FC = () => {
                 >
                   <option value="pdf">PDF</option>
                   <option value="image">Image</option>
-                  <option value="markdown">Markdown</option>
-                  <option value="docx">Docx</option>
-                  <option value="pptx">PPTX</option>
-                  <option value="xlsx">XLSX</option>
+                  <option value="markdown" disabled>
+                    Markdown (deprecated)
+                  </option>
+                  <option value="docx" disabled>
+                    Docx (deprecated)
+                  </option>
+                  <option value="pptx" disabled>
+                    PPTX (deprecated)
+                  </option>
+                  <option value="xlsx" disabled>
+                    XLSX (deprecated)
+                  </option>
                   <option value="html">HTML</option>
-                  <option value="eml">EML</option>
+                  <option value="eml" disabled>
+                    EML (deprecated)
+                  </option>
                 </select>
                 <button
                   onClick={() => typedInputRef.current?.click()}

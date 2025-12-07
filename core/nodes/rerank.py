@@ -7,11 +7,12 @@ from server.config import settings
 
 
 async def rerank(state: RAGState) -> dict:
+    """LangGraph rerank 节点：基于模型分数与基础分融合，支持阈值过滤。"""
     query = state.get("query", "")
     items: list[RetrievedChunk] = state.get("retrieved_chunks", [])
     texts = [it.get("content", "") for it in items]
     provider = (state.get("metadata") or {}).get("reranker_provider")
-    rr = get_reranker(provider)
+    rr = await get_reranker(provider)
     t0 = time.perf_counter()
     scores = rr.score(query, texts)
 

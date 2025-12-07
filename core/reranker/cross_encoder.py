@@ -5,6 +5,7 @@ class Reranker:
     def __init__(self, model_name: str | None = None):
         self._ce = None
         name = model_name or os.environ.get("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+        # TODO: 与 DB 模型注册/LLM Gateway 类似，对齐 provider/model_id 注入；当前仍基于 env 控制加载
         if os.environ.get("USE_CROSS_ENCODER") == "1":
             try:
                 from sentence_transformers import CrossEncoder

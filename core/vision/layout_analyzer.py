@@ -1,4 +1,9 @@
-def analyze_blocks(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
+def analyze_blocks(
+    image_bytes: bytes, min_area: int = 2000, min_side: int = 30
+) -> list[tuple[int, int, int, int]]:
+    """
+    OpenCV 版面粗分割，带最小尺寸过滤；失败返回空列表。
+    """
     try:
         import cv2
         import numpy as np
@@ -16,7 +21,7 @@ def analyze_blocks(image_bytes: bytes) -> list[tuple[int, int, int, int]]:
     boxes: list[tuple[int, int, int, int]] = []
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        if w * h < 2000 or w < 30 or h < 30:
+        if w * h < min_area or w < min_side or h < min_side:
             continue
         boxes.append((x, y, w, h))
     boxes.sort(key=lambda b: (b[1], b[0]))

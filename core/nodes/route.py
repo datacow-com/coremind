@@ -2,6 +2,7 @@ from core.state import RAGState
 
 
 async def route(state: RAGState) -> dict:
+    """LangGraph 路由节点：基于 query 关键词选择意图（qa/summarize/web_search/execute）。"""
     q = (state.get("query") or "").lower()
     intent = "qa"
     if any(k in q for k in ["总结", "总结一下", "概括", "overview", "summary"]):

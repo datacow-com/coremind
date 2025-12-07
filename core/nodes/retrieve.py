@@ -12,6 +12,9 @@ from server.config import settings
 
 
 async def retrieve(state: RAGState) -> dict:
+    """
+    LangGraph 检索节点：向量+关键词双通道，RRF 融合，支持 KB 配置透传。
+    """
     query = state.get("query", "")
     if not query:
         return {"retrieved_chunks": [], "step": "retrieval"}
@@ -21,6 +24,7 @@ async def retrieve(state: RAGState) -> dict:
     emb = get_embedder(dim=256, provider=emb_provider, model_name=emb_model)
     qvec = await asyncio.to_thread(emb.embed, query)
     meta_state = merge_kb_params(state.get("metadata", {}) or {})
+    kb_cfg = state.get("kb_config") or meta_state  # 兜底：兼容旧态，避免 NameError
     v_weight = float(meta_state.get("vector_weight"))
     k_weight = float(meta_state.get("keyword_weight"))
     top_k = int(meta_state.get("top_k"))
@@ -39,47 +43,28 @@ async def retrieve(state: RAGState) -> dict:
         return "cn" if (total and (cjk / total) >= 0.2) else "en"
 
     k_rrf = int(meta_state.get("rrf_k") or getattr(settings, "rrf_k", 60))
-    use_base = bool(settings.use_base_retriever)
     lang_hint_override = str(meta_state.get("lang_hint") or "").strip() or None
     if not lang_hint_override and kb_cfg:
         st = str(kb_cfg.get("stack") or "").lower()
         if st in {"cn", "en"}:
             lang_hint_override = st
     vector_results: list[tuple[dict[str, Any], float]] = []
-    if use_base:
-        try:
-            from core.retriever.base_retriever import OmniIndexRetriever
-
-            retr = OmniIndexRetriever(top_k=candidate_k)
-            docs = retr.invoke(query)
-            # map to [(meta, score)]
-            tmp = []
-            for d in docs:
-                meta = dict(d.metadata or {})
-                score = float(meta.get("score") or 0.0)
-                tmp.append((meta, score))
-            vector_results = tmp
-        except Exception:
-            vector_results = search_index(
-                qvec, top_k=candidate_k, lang_hint=lang_hint_override or _lang_hint(query)
-            )
-    else:
+    collection_name = None
+    backend_override = None
+    try:
+        if kb_cfg:
+            collection_name = (kb_cfg.get("collection_name") or "") or None
+            backend_override = (kb_cfg.get("vector_backend") or "") or None
+    except Exception:
         collection_name = None
         backend_override = None
-        try:
-            if kb_cfg:
-                collection_name = (kb_cfg.get("collection_name") or "") or None
-                backend_override = (kb_cfg.get("vector_backend") or "") or None
-        except Exception:
-            collection_name = None
-            backend_override = None
-        vector_results = search_index(
-            qvec,
-            top_k=candidate_k,
-            lang_hint=lang_hint_override or _lang_hint(query),
-            collection_name=collection_name,
-            backend_override=backend_override,
-        )
+    vector_results = search_index(
+        qvec,
+        top_k=candidate_k,
+        lang_hint=lang_hint_override or _lang_hint(query),
+        collection_name=collection_name,
+        backend_override=backend_override,
+    )
     kw = get_keyword_index()
     keyword_results = kw.search(query, top_k=candidate_k)
 

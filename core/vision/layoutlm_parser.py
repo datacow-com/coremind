@@ -1,6 +1,11 @@
 def classify_blocks_layoutlm(
-    image_bytes: bytes, boxes: list[tuple[int, int, int, int]], model_name: str
+    image_bytes: bytes, boxes: list[tuple[int, int, int, int]], model_name: str | None
 ) -> list[str]:
+    """
+    LayoutLMv3 区块分类：传入模型名称；失败返回空标签。
+    """
+    if not model_name:
+        return ["" for _ in boxes]
     try:
         from io import BytesIO
 

@@ -2,6 +2,9 @@ import json
 import os
 from typing import Any
 
+# 说明：此文件仅保留“文件化默认配置 + 环境校验”能力，供少量 API 读取。
+# 实际在线调用请使用 core/llm/gateway.py（DB 驱动），避免重复网关实现。
+
 CONFIG_DIR = os.path.join(os.getcwd(), "data", "config")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "providers.json")
 

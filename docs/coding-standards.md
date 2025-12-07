@@ -36,12 +36,11 @@
 
 ## 模型与解析管线
 
-- 视觉解析默认走轻量管线，依据复杂度评分自动启用 VLM；复杂场景可开启 YOLO/LayoutLM。
-- 可选模型的启用依赖显式环境变量：
-  - Cohere Rerank：`COHERE_API_KEY` 与 `COHERE_RERANK_MODEL`。
-  - YOLO：`YOLO_ENABLED=1` 与 `YOLO_MODEL=/path/to/best.pt`。
-  - LayoutLMv3：`LAYOUTLM_ENABLED=1` 与 `LAYOUTLM_MODEL`。
-- 回退策略：模型不可用或未配置时，必须自动降级，保证功能不中断。
+- LangGraph 状态：使用 `TypedDict` 定义 IngestState/RetrievalState，字段与接口契约保持一致。
+- 流式输出：事件仅允许结构化类型（node_start/node_end/answer/complete/citation/error/metrics）；禁止在流中输出非结构化日志。
+- 策略即状态：会话/KB 的 `strategy_config` 必须可序列化、可校验（Pydantic）；前后端字段一致；默认值由后端集中定义，前端仅补齐不自创字段。
+- 多模型/网关：统一走 gateway/registry，不在业务代码中直连外部大模型。
+- 预览/解析：文档预览接口需返回结构化 bbox/页面信息；前端不得直接读取存储路径。
 
 ## 错误处理与日志
 
@@ -51,30 +50,19 @@
 
 ## 测试与 CI
 
-- 单测与集成测试必须覆盖新增路径；允许 `tests/**` 下的更宽松安全规则（见 `ruff.toml`）。
-- 端到端：本地轻量（`E2E_BASE_URL=http://127.0.0.1:8000`）、容器栈（`make e2e-docker`）。
-- UI 冒烟：Playwright 测试包含关键路径（上传→摄取→引用高亮与自动滚动）。
-- 覆盖率在 CI 自动生成与上传；新增模块应补充基本覆盖。
+- 单测：核心节点（chunker/retriever/reranker）与 API schema 校验；类型检查（mypy）不可跳过。
+- 集成/E2E：覆盖主链路（上传→摄取/索引→聊天→引用预览），包含异常场景（429/401/网络中断/SSE 断开）。
+- 性能/长耗时：对流式接口（ingest/chat）做超时与断线恢复测试；大文件上传与并发 ingest 需有用例或脚本。
+- CI：必须跑 ruff + mypy + tests + bandit；失败不得提交；保持 pre-commit 钩子启用。
 
 ## 提交流程（pre-commit）
 
-- 安装：`pre-commit install`；可选 `pre-commit install --hook-type pre-push`。
-- 本地运行：`pre-commit run --all-files`；修复格式与静态问题后再提交。
-- 常用 Make 命令：`make check`、`make fix`、`make lint`、`make type`、`make coverage`。
+- 必须启用仓库提供的 pre-commit 钩子；提交前本地通过 ruff、mypy、bandit、tests。
+- 禁止跳过钩子或 `--no-verify`；如特殊情况需在 MR/PR 说明。
 
 ## 代码组织与约定
 
-- 目录：
-  - `core/**`：检索、解析、LLM 与工具；
-  - `server/**`：API 路由、服务与模型网关；
-  - `frontend/**`：UI 与端到端测试；
-  - `scripts/**`：基准、工具与运维脚本；
-  - `docs/**`：文档与规范。
-- 命名：统一驼峰/下划线风格；避免缩写不明的名称；接口参数命名必须含义清晰。
-- 依赖：仅在确有必要时引入第三方库；可选依赖必须具备降级通道。
-
-## 迁移与发布
-
-- 数据库模式：提供初始化与迁移校验；在 CI 验证一致性与回滚路径。
-- 向量与搜索：Milvus 性能基准与回归报告；本地默认回退本地索引。
-- 发布前检查：通过所有门禁（pre-commit/CI/安全扫描/覆盖率），文档与示例齐备。
+- 分层清晰：core（算法/管线）、server（API/路由）、frontend（UI）。
+- 前端接口白名单：`/api/chat/run`、`/api/chat/sessions*`、`/api/kb/{kb}/documents`、`/documents/{id}/pages/{page}`、`/api/ingest/upload_run(/stream)`；禁止新增或复用废弃接口（`/api/documents*`、`/api/chat/stream`、旧 ingest 进度）。
+- 兼容性：废弃接口标注 deprecated，不再新增依赖；新增接口需文档化字段与错误格式。
+- 配置与默认值：统一由后端定义并暴露，前端不得硬编码私有默认。

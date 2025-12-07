@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Upload } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, uploadAndRunIngest } from "@/lib/api";
 import { useStream } from "@/hooks/useStream";
 import { useToast } from "@/components/ui/toast-provider";
 import { EmptyState } from "@/components/ui/empty";
@@ -71,7 +71,7 @@ const ChatPage: React.FC = () => {
   });
   const [topK, setTopK] = useState<number>(5);
   const [candidateK, setCandidateK] = useState<number>(50);
-  const [streaming, setStreaming] = useState<boolean>(true);
+  const streaming = true;
   const [phase, setPhase] = useState<string>("idle");
   const [phaseHistory, setPhaseHistory] = useState<string[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -94,7 +94,6 @@ const ChatPage: React.FC = () => {
   const [lastPing, setLastPing] = useState<number | null>(null);
   const [exportLinks, setExportLinks] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputExtRef = useRef<HTMLInputElement>(null);
   const [lastIngestInfo, setLastIngestInfo] = useState<{
     type: string;
@@ -212,18 +211,27 @@ const ChatPage: React.FC = () => {
 
   useEffect(() => {
     const loadDocs = async () => {
+      if (!kbBinding) {
+        setDocuments([]);
+        setSelectedDocument(null);
+        return;
+      }
       try {
-        const r = await fetch("/api/documents");
+        const r = await fetch(
+          `/api/kb/${encodeURIComponent(kbBinding)}/documents`,
+        );
         if (r.ok) {
           const data = await r.json();
           setDocuments(data.documents || []);
+        } else {
+          setDocuments([]);
         }
-      } catch (e) {
-        // noop
+      } catch {
+        setDocuments([]);
       }
     };
     loadDocs();
-  }, []);
+  }, [kbBinding]);
 
   useEffect(() => {
     const loadDefaults = async () => {
@@ -299,21 +307,6 @@ const ChatPage: React.FC = () => {
       } catch {}
     })();
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("omnirag_chats", JSON.stringify(chats));
-    } catch {}
-  }, [chats]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "omnirag_conversations",
-        JSON.stringify(conversationMap),
-      );
-    } catch {}
-  }, [conversationMap]);
 
   useEffect(() => {
     const cfg = chats.find((c) => c.id === activeChatId)?.config;
@@ -469,228 +462,175 @@ const ChatPage: React.FC = () => {
       const convId = activeChatId
         ? conversationMap[activeChatId] || null
         : conversationId;
-      if (streaming) {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: "",
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-        const payload = {
-          query: input,
-          conversation_id: convId,
-          document_ids: selectedDocument ? [selectedDocument] : undefined,
-          top_k: topK,
-          candidate_k: candidateK,
-          temperature: 0.7,
-          vector_weight: vectorWeight,
-          keyword_weight: keywordWeight,
-          web_search_enabled: webSearchEnabled,
-          kb_name: kbBinding || undefined,
-        };
-        setStreamError(null);
-        await runStream(
-          "/api/chat/stream",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          },
-          {
-            onEvent: async (evt: any) => {
-              if (evt.ts) setLastPing(parseInt(evt.ts));
-              if (evt.type === "phase") {
-                const name = evt.name as string;
-                const status = evt.status as string;
-                setPhase(`${name}:${status}`);
-                setPhaseHistory((prev) =>
-                  [...prev, `${name}:${status}`].slice(-6),
-                );
-                if (name === "generate" && status === "end") {
-                  const chars = parseInt(evt.gen_chars || 0);
-                  const words = parseInt(evt.gen_words || 0);
-                  setGenStats({ chars, words });
-                  const cps = parseFloat(evt.chars_per_sec || 0);
-                  const wps = parseFloat(evt.words_per_sec || 0);
-                  setTokenRate({ cps, wps });
-                  setLastTiming((prev) => ({
-                    ...(prev || {}),
-                    generate_ms: evt.duration_ms || prev?.generate_ms,
-                  }));
-                } else if (name === "generate" && status === "fallback") {
-                  setFallbackMsg(
-                    "Stream failed: fallback to non-stream response",
-                  );
-                } else if (name === "retrieve" && status === "end") {
-                  const cnt = parseInt(evt.count || 0);
-                  setRetrievalCount(cnt);
-                  setLastTiming((prev) => ({
-                    ...(prev || {}),
-                    retrieve_ms: evt.duration_ms || prev?.retrieve_ms,
-                  }));
-                } else if (name === "rerank" && status === "end") {
-                  const avg = parseFloat(evt.avg_score || 0);
-                  setRerankAvg(avg);
-                  setLastTiming((prev) => ({
-                    ...(prev || {}),
-                    rerank_ms: evt.duration_ms || prev?.rerank_ms,
-                  }));
-                }
-              } else if (evt.type === "answer" && evt.delta) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessage.id
-                      ? { ...m, content: (m.content || "") + evt.delta }
-                      : m,
-                  ),
-                );
-              } else if (evt.type === "final") {
-                if (evt.conversation_id && activeChatId) {
-                  setConversationMap((prev) => {
-                    const next = {
-                      ...prev,
-                      [activeChatId]: evt.conversation_id,
-                    };
-                    return next;
-                  });
-                  setConversationId(evt.conversation_id);
-                }
-                if (evt.sources && evt.sources.length > 0) {
-                  const firstSource = evt.sources[0];
-                  await loadPreviewForSource(firstSource);
-                  const enrichedSources: SourceItem[] = (evt.sources || []).map(
-                    (s: any) => {
-                      const meta =
-                        citationMetaByChunkId[String(s.chunk_id || "")] || {};
-                      const hl =
-                        typeof meta.heading_level === "number"
-                          ? meta.heading_level
-                          : null;
-                      const tid =
-                        typeof meta.table_id === "number"
-                          ? meta.table_id
-                          : null;
-                      return {
-                        ...s,
-                        block_type: meta.block_type,
-                        heading_level: hl,
-                        table_id: tid,
-                      } as SourceItem;
-                    },
-                  );
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMessage.id
-                        ? { ...m, sources: enrichedSources }
-                        : m,
-                    ),
-                  );
-                }
-                if (evt.answer) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMessage.id
-                        ? { ...m, content: (m.content || "") + evt.answer }
-                        : m,
-                    ),
-                  );
-                }
-              } else if (evt.type === "citation") {
-                const docId = String(evt.doc_id || "");
-                const page = parseInt(evt.page || 0);
-                const bbox = evt.bbox || null;
-                const bt = evt.block_type || null;
-                const hl = evt.heading_level ?? null;
-                const tid = evt.table_id ?? null;
-                const cid = String(evt.chunk_id || "");
-                setLastCitationMeta({
-                  block_type: bt || undefined,
-                  heading_level: typeof hl === "number" ? hl : null,
-                  table_id: typeof tid === "number" ? tid : null,
-                });
-                if (cid) {
-                  setCitationMetaByChunkId((prev) => ({
-                    ...prev,
-                    [cid]: {
-                      block_type: bt || undefined,
-                      heading_level: typeof hl === "number" ? hl : null,
-                      table_id: typeof tid === "number" ? tid : null,
-                    },
-                  }));
-                }
-                if (docId && page) {
-                  await loadPreviewByDocId(
-                    docId.replace(/\.pdf$/i, ""),
-                    page,
-                    bbox,
-                  );
-                }
-              } else if (evt.type === "meta") {
-                if (evt.request_id) setRequestId(String(evt.request_id));
-              } else if (evt.type === "metrics") {
-                const ch = parseInt(evt.chars || 0);
-                const wd = parseInt(evt.words || 0);
-                const cps = parseFloat(evt.chars_per_sec || 0);
-                const wps = parseFloat(evt.words_per_sec || 0);
-                setGenStats({ chars: ch, words: wd });
-                setTokenRate({ cps, wps });
-              }
-            },
-            onError: (err) => {
-              setStreamError(err?.message || "流式失败，请重试");
-              push({
-                title: "流式失败",
-                description: err?.message || "请重试",
-                variant: "error",
-              });
-            },
-            onDone: () => {
-              setIsLoading(false);
-            },
-          },
-        );
-      } else {
-        const response = await fetch("/api/chat", {
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "",
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      const payload = {
+        query: input,
+        conversation_id: convId,
+        document_ids: selectedDocument ? [selectedDocument] : undefined,
+        top_k: topK,
+        candidate_k: candidateK,
+        temperature: 0.7,
+        vector_weight: vectorWeight,
+        keyword_weight: keywordWeight,
+        web_search_enabled: webSearchEnabled,
+        kb_name: kbBinding || undefined,
+      };
+      setStreamError(null);
+      await runStream(
+        "/api/chat/run",
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             query: input,
-            conversation_id: convId,
-            document_ids: selectedDocument ? [selectedDocument] : undefined,
-            top_k: topK,
-            candidate_k: candidateK,
-            temperature: 0.7,
-            vector_weight: vectorWeight,
-            keyword_weight: keywordWeight,
-            web_search_enabled: webSearchEnabled,
-            kb_name: kbBinding || undefined,
+            history: messages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+            kb_name: kbBinding || "default",
+            strategy_config: {
+              top_k: topK,
+              candidate_k: candidateK,
+              temperature: 0.7,
+              vector_weight: vectorWeight,
+              keyword_weight: keywordWeight,
+              web_search_enabled: webSearchEnabled,
+            },
           }),
-        });
-        if (!response.ok) {
-          if (response.status === 429)
-            setStreamError("Too many requests (429)");
-          throw new Error("Failed to get response");
-        }
-        const data = await response.json();
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: data.answer,
-          sources: data.sources,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-        if (data.conversation_id && activeChatId) {
-          setConversationMap((prev) => {
-            const next = { ...prev, [activeChatId]: data.conversation_id };
-            return next;
-          });
-          setConversationId(data.conversation_id);
-        }
-        if (data.sources && data.sources.length > 0) {
-          const firstSource = data.sources[0];
-          await loadPreviewForSource(firstSource);
-        }
-      }
+        },
+        {
+          onEvent: async (evt: any) => {
+            if (evt.type === "node_start" || evt.type === "node_end") {
+              const status = evt.type === "node_start" ? "start" : "end";
+              const name = evt.node || "node";
+              setPhase(`${name}:${status}`);
+              setPhaseHistory((prev) =>
+                [...prev, `${name}:${status}`].slice(-6),
+              );
+            } else if (evt.type === "answer") {
+              const content = evt.content || evt.answer || evt.delta || "";
+              const citations = evt.citations || evt.sources || [];
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMessage.id
+                    ? {
+                        ...m,
+                        content: content || m.content,
+                        sources: citations,
+                      }
+                    : m,
+                ),
+              );
+              if (citations?.length > 0) {
+                const first = citations[0];
+                await loadPreviewForSource(first);
+              }
+            } else if (evt.type === "final") {
+              // 兼容旧协议
+              if (evt.sources && evt.sources.length > 0) {
+                const firstSource = evt.sources[0];
+                await loadPreviewForSource(firstSource);
+                const enrichedSources: SourceItem[] = (evt.sources || []).map(
+                  (s: any) => {
+                    const meta =
+                      citationMetaByChunkId[String(s.chunk_id || "")] || {};
+                    const hl =
+                      typeof meta.heading_level === "number"
+                        ? meta.heading_level
+                        : null;
+                    const tid =
+                      typeof meta.table_id === "number" ? meta.table_id : null;
+                    return {
+                      ...s,
+                      block_type: meta.block_type,
+                      heading_level: hl,
+                      table_id: tid,
+                    } as SourceItem;
+                  },
+                );
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessage.id
+                      ? { ...m, sources: enrichedSources }
+                      : m,
+                  ),
+                );
+              }
+              if (evt.answer) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessage.id
+                      ? { ...m, content: (m.content || "") + evt.answer }
+                      : m,
+                  ),
+                );
+              }
+            } else if (evt.type === "citation") {
+              const docId = String(evt.doc_id || "");
+              const page = parseInt(evt.page || 0);
+              const bbox = evt.bbox || null;
+              const bt = evt.block_type || null;
+              const hl = evt.heading_level ?? null;
+              const tid = evt.table_id ?? null;
+              const cid = String(evt.chunk_id || "");
+              setLastCitationMeta({
+                block_type: bt || undefined,
+                heading_level: typeof hl === "number" ? hl : null,
+                table_id: typeof tid === "number" ? tid : null,
+              });
+              if (cid) {
+                setCitationMetaByChunkId((prev) => ({
+                  ...prev,
+                  [cid]: {
+                    block_type: bt || undefined,
+                    heading_level: typeof hl === "number" ? hl : null,
+                    table_id: typeof tid === "number" ? tid : null,
+                  },
+                }));
+              }
+              if (docId && page) {
+                await loadPreviewByDocId(
+                  docId.replace(/\.pdf$/i, ""),
+                  page,
+                  bbox,
+                );
+              }
+            } else if (evt.type === "meta") {
+              if (evt.request_id) setRequestId(String(evt.request_id));
+            } else if (evt.type === "metrics") {
+              const ch = parseInt(evt.chars || 0);
+              const wd = parseInt(evt.words || 0);
+              const cps = parseFloat(evt.chars_per_sec || 0);
+              const wps = parseFloat(evt.words_per_sec || 0);
+              setGenStats({ chars: ch, words: wd });
+              setTokenRate({ cps, wps });
+            } else if (evt.type === "error") {
+              setStreamError(evt.error || "流式失败，请重试");
+              push({
+                title: "流式失败",
+                description: evt.error || "请重试",
+                variant: "error",
+              });
+            }
+          },
+          onError: (err) => {
+            setStreamError(err?.message || "流式失败，请重试");
+            push({
+              title: "流式失败",
+              description: err?.message || "请重试",
+              variant: "error",
+            });
+          },
+          onDone: () => {
+            setIsLoading(false);
+          },
+        },
+      );
     } catch (error) {
       console.error("Error sending message:", error);
       const errorMessage: Message = {
@@ -704,78 +644,6 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const handleFileUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const response = await fetch("/api/documents/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to upload file");
-      }
-
-      const data = await response.json();
-
-      // Add a new document to the list
-      const newDocument: Document = {
-        id: data.document_id,
-        filename: data.filename,
-        processing_status: "processing",
-        processed_pages: 0,
-        total_pages: 0,
-      };
-
-      setDocuments((prev) => [...prev, newDocument]);
-
-      // Poll for status updates
-      const pollStatus = async () => {
-        try {
-          const statusResponse = await fetch(
-            `/api/documents/${data.document_id}/status`,
-          );
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            setDocuments((prev) =>
-              prev.map((doc) =>
-                doc.id === data.document_id
-                  ? {
-                      ...doc,
-                      processing_status: statusData.processing_status,
-                      processed_pages: statusData.processed_pages,
-                      total_pages: statusData.total_pages,
-                    }
-                  : doc,
-              ),
-            );
-
-            if (
-              statusData.processing_status === "completed" ||
-              statusData.processing_status === "failed"
-            ) {
-              clearInterval(interval);
-            }
-          }
-        } catch (error) {
-          console.error("Error polling status:", error);
-          clearInterval(interval);
-        }
-      };
-
-      const interval = setInterval(pollStatus, 2000);
-    } catch (error) {
-      console.error("Error uploading file:", error);
-    }
-  };
-
   const handleExtIngestUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -783,26 +651,18 @@ const ChatPage: React.FC = () => {
     if (!file) return;
     const name = (file.name || "").toLowerCase();
     const ext = name.split(".").pop() || "";
-    const formData = new FormData();
-    formData.append("file", file);
-    let endpoint = "";
-    if (["png", "jpg", "jpeg", "webp"].includes(ext))
-      endpoint = "/api/ingest/image";
-    else if (ext === "md" || ext === "markdown")
-      endpoint = "/api/ingest/markdown";
-    else if (ext === "docx") endpoint = "/api/ingest/docx";
-    else if (ext === "pptx") endpoint = "/api/ingest/pptx";
-    else if (ext === "xlsx") endpoint = "/api/ingest/xlsx";
-    else if (ext === "html" || ext === "htm") endpoint = "/api/ingest/html";
-    else if (ext === "eml") endpoint = "/api/ingest/eml";
-    else {
-      return;
-    }
+    const scenarioMap: Record<string, string> = {
+      pdf: "paper",
+      html: "html",
+      htm: "html",
+      png: "table",
+      jpg: "table",
+      jpeg: "table",
+      webp: "table",
+    };
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: formData,
-      });
+      const scenario = scenarioMap[ext];
+      const response = await uploadAndRunIngest({ file, scenario });
       if (!response.ok) throw new Error("Failed to ingest file");
       const data = await response.json();
       setLastIngestInfo({
@@ -966,22 +826,16 @@ const ChatPage: React.FC = () => {
                   min={1}
                   max={10}
                   value={topK}
-                  onChange={(e) =>
-                    setTopK(
-                      Math.max(
-                        1,
-                        Math.min(10, parseInt(e.target.value || "5")),
-                      ),
-                    )
-                  }
+                  onChange={(e) => {
+                    const v = Math.max(
+                      1,
+                      Math.min(10, parseInt(e.target.value || "5")),
+                    );
+                    setTopK(v);
+                    upsertActiveChatConfig({ top_k: v });
+                  }}
                   className="w-16 border border-gray-300 rounded px-2 py-1"
                 />
-                <button
-                  className="text-xs px-2 py-1 border rounded"
-                  onClick={() => upsertActiveChatConfig({ top_k: topK })}
-                >
-                  保存
-                </button>
               </div>
               <div className="flex items-center space-x-2 text-sm">
                 <label className="text-gray-600">候选数</label>
@@ -990,24 +844,16 @@ const ChatPage: React.FC = () => {
                   min={10}
                   max={200}
                   value={candidateK}
-                  onChange={(e) =>
-                    setCandidateK(
-                      Math.max(
-                        10,
-                        Math.min(200, parseInt(e.target.value || "50")),
-                      ),
-                    )
-                  }
+                  onChange={(e) => {
+                    const v = Math.max(
+                      10,
+                      Math.min(200, parseInt(e.target.value || "50")),
+                    );
+                    setCandidateK(v);
+                    upsertActiveChatConfig({ candidate_k: v });
+                  }}
                   className="w-20 border border-gray-300 rounded px-2 py-1"
                 />
-                <button
-                  className="text-xs px-2 py-1 border rounded"
-                  onClick={() =>
-                    upsertActiveChatConfig({ candidate_k: candidateK })
-                  }
-                >
-                  保存
-                </button>
               </div>
 
               <div className="flex items-center space-x-2 text-sm">
@@ -1018,14 +864,14 @@ const ChatPage: React.FC = () => {
                   max={1}
                   step={0.1}
                   value={vectorWeight}
-                  onChange={(e) =>
-                    setVectorWeight(
-                      Math.max(
-                        0,
-                        Math.min(1, parseFloat(e.target.value || "0.6")),
-                      ),
-                    )
-                  }
+                  onChange={(e) => {
+                    const v = Math.max(
+                      0,
+                      Math.min(1, parseFloat(e.target.value || "0.6")),
+                    );
+                    setVectorWeight(v);
+                    upsertActiveChatConfig({ vector_weight: v });
+                  }}
                   className="w-16 border border-gray-300 rounded px-2 py-1"
                 />
                 <label className="text-gray-600">关键词权重</label>
@@ -1035,27 +881,16 @@ const ChatPage: React.FC = () => {
                   max={1}
                   step={0.1}
                   value={keywordWeight}
-                  onChange={(e) =>
-                    setKeywordWeight(
-                      Math.max(
-                        0,
-                        Math.min(1, parseFloat(e.target.value || "0.4")),
-                      ),
-                    )
-                  }
+                  onChange={(e) => {
+                    const v = Math.max(
+                      0,
+                      Math.min(1, parseFloat(e.target.value || "0.4")),
+                    );
+                    setKeywordWeight(v);
+                    upsertActiveChatConfig({ keyword_weight: v });
+                  }}
                   className="w-16 border border-gray-300 rounded px-2 py-1"
                 />
-                <button
-                  className="text-xs px-2 py-1 border rounded"
-                  onClick={() =>
-                    upsertActiveChatConfig({
-                      vector_weight: vectorWeight,
-                      keyword_weight: keywordWeight,
-                    })
-                  }
-                >
-                  保存
-                </button>
               </div>
               <div className="text-xs text-gray-600">
                 <span className="mr-2">
@@ -1068,14 +903,6 @@ const ChatPage: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex items-center space-x-2 text-sm">
-                <label className="text-gray-600">流式</label>
-                <input
-                  type="checkbox"
-                  checked={streaming}
-                  onChange={(e) => setStreaming(e.target.checked)}
-                />
-              </div>
               <div className="flex items-center space-x-2 text-sm">
                 <label className="text-gray-600">来源类型</label>
                 <select
@@ -1107,7 +934,12 @@ const ChatPage: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={webSearchEnabled}
-                  onChange={(e) => setWebSearchEnabled(e.target.checked)}
+                  onChange={(e) => {
+                    setWebSearchEnabled(e.target.checked);
+                    upsertActiveChatConfig({
+                      web_search_enabled: e.target.checked,
+                    });
+                  }}
                 />
               </div>
               <div className="flex items-center space-x-2 text-sm">
@@ -1134,57 +966,46 @@ const ChatPage: React.FC = () => {
                   <option value="gemini">gemini</option>
                 </select>
               </div>
-              {streaming && (
-                <div className="text-xs text-gray-600">
-                  <span className="mr-2">阶段: {phase}</span>
-                  {streamError && (
-                    <span className="text-red-600">{streamError}</span>
-                  )}
-                  {phaseHistory.length > 0 && (
-                    <span className="ml-2 text-gray-400">
-                      [{phaseHistory.join(" > ")}]
-                    </span>
-                  )}
-                  {requestId && (
-                    <span className="ml-2 text-gray-400">req: {requestId}</span>
-                  )}
-                  {genStats && (
-                    <span className="ml-2 text-gray-400">
-                      生成: {genStats.chars} 字符 / {genStats.words} 词
-                    </span>
-                  )}
-                  {tokenRate && (
-                    <span className="ml-2 text-gray-400">
-                      速率: {tokenRate.cps.toFixed(1)} 字符/秒 /{" "}
-                      {tokenRate.wps.toFixed(1)} 词/秒
-                    </span>
-                  )}
-                  {retrievalCount !== null && (
-                    <span className="ml-2 text-gray-400">
-                      命中: {retrievalCount}
-                    </span>
-                  )}
-                  {rerankAvg !== null && (
-                    <span className="ml-2 text-gray-400">
-                      平均: {rerankAvg.toFixed(3)}
-                    </span>
-                  )}
-                  {fallbackMsg && (
-                    <span className="ml-2 text-yellow-600">{fallbackMsg}</span>
-                  )}
-                  {lastPing && (
-                    <span className="ml-2 text-green-600">心跳</span>
-                  )}
-                </div>
-              )}
+              <div className="text-xs text-gray-600">
+                <span className="mr-2">阶段: {phase}</span>
+                {streamError && (
+                  <span className="text-red-600">{streamError}</span>
+                )}
+                {phaseHistory.length > 0 && (
+                  <span className="ml-2 text-gray-400">
+                    [{phaseHistory.join(" > ")}]
+                  </span>
+                )}
+                {requestId && (
+                  <span className="ml-2 text-gray-400">req: {requestId}</span>
+                )}
+                {genStats && (
+                  <span className="ml-2 text-gray-400">
+                    生成: {genStats.chars} 字符 / {genStats.words} 词
+                  </span>
+                )}
+                {tokenRate && (
+                  <span className="ml-2 text-gray-400">
+                    速率: {tokenRate.cps.toFixed(1)} 字符/秒 /{" "}
+                    {tokenRate.wps.toFixed(1)} 词/秒
+                  </span>
+                )}
+                {retrievalCount !== null && (
+                  <span className="ml-2 text-gray-400">
+                    命中: {retrievalCount}
+                  </span>
+                )}
+                {rerankAvg !== null && (
+                  <span className="ml-2 text-gray-400">
+                    平均: {rerankAvg.toFixed(3)}
+                  </span>
+                )}
+                {fallbackMsg && (
+                  <span className="ml-2 text-yellow-600">{fallbackMsg}</span>
+                )}
+                {lastPing && <span className="ml-2 text-green-600">心跳</span>}
+              </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
               <input
                 ref={fileInputExtRef}
                 type="file"
@@ -1193,13 +1014,6 @@ const ChatPage: React.FC = () => {
                 className="hidden"
               />
 
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                <Upload className="h-4 w-4" />
-                <span>上传 PDF</span>
-              </button>
               <button
                 onClick={() => fileInputExtRef.current?.click()}
                 className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"

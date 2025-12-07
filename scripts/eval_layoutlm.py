@@ -2,29 +2,14 @@ import argparse
 import json
 from pathlib import Path
 
-from core.loaders.visual_pdf_loader import ParsingRule, VisualPDFLoader
-
 
 async def evaluate(pdf_path: str, class_model: str | None) -> dict:
-    loader = VisualPDFLoader(ParsingRule())
-    pages = await loader._pdf_pages(pdf_path)
-    total_blocks = 0
-    dist: dict[str, int] = {}
-    for i in range(len(pages)):
-        cache_key = f"{pdf_path}#p{i+1}"
-        blocks = loader._block_cache.get(cache_key, []) or []
-        total_blocks += len(blocks)
-        for txt, _ in blocks:
-            bt = (txt or "").lower()
-            if bt not in {"paragraph", "heading", "table", "figure"}:
-                bt = "unknown"
-            dist[bt] = dist.get(bt, 0) + 1
-    return {
-        "pdf": pdf_path,
-        "total_blocks": total_blocks,
-        "distribution": dist,
-        "class_model": class_model,
-    }
+    # VisualPDFLoader 已废弃并会抛异常；本脚本保留入口但明确提示。
+    raise RuntimeError(
+        "scripts/eval_layoutlm.py relies on VisualPDFLoader which is no longer supported. "
+        "Please migrate to the LangGraph ingestion pipeline (GpuVisionParser + SmartChunker) "
+        "and add evaluation there."
+    )
 
 
 def main() -> None:

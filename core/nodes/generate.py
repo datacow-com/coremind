@@ -13,6 +13,7 @@ _GEN_SYSTEM_PROMPT = (
 
 
 async def generate(state: RAGState) -> dict:
+    """LangGraph 生成节点：强引用回答，要求 JSON 输出 answer/citations。"""
     query = state.get("query", "")
     chunks: list[RetrievedChunk] = state.get("retrieved_chunks", [])
     context = "\n\n".join([c.get("content", "") for c in chunks])

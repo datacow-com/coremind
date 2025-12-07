@@ -5,6 +5,7 @@ from server.config import settings
 
 
 async def grade(state: RAGState) -> dict:
+    """LangGraph grade 节点：根据检索得分判断是否需触发联网搜索。"""
     t0 = time.perf_counter()
     items: list[RetrievedChunk] = state.get("retrieved_chunks", [])
     meta = state.get("metadata", {}) or {}

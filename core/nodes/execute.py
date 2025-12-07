@@ -18,6 +18,7 @@ def _markdown_table_to_csv(md: str) -> str:
 
 
 async def execute(state: RAGState) -> dict:
+    """LangGraph 执行节点：示例性将表格 chunk 导出为 CSV 文本。"""
     chunks: list[RetrievedChunk] = state.get("retrieved_chunks") or []
     if not chunks:
         return {"step": "execute", "answer": "暂无可执行内容，请先检索或指定具体文档。"}

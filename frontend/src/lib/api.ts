@@ -65,6 +65,28 @@ export const runIngest = async (data: {
   });
 };
 
+// Upload + run in one step (new pipeline)
+export const uploadAndRunIngest = async (data: {
+  file: File;
+  kb_name?: string;
+  scenario?: string;
+  strategy_config?: any;
+  version?: number;
+}) => {
+  const form = new FormData();
+  form.append("file", data.file);
+  if (data.kb_name) form.append("kb_name", data.kb_name);
+  if (data.scenario) form.append("scenario", data.scenario);
+  if (data.version) form.append("version", String(data.version));
+  if (data.strategy_config) {
+    form.append("strategy_config", JSON.stringify(data.strategy_config));
+  }
+  return apiFetch("/api/ingest/upload_run", {
+    method: "POST",
+    body: form,
+  });
+};
+
 export const runChat = async (data: {
   query: string;
   kb_name: string;

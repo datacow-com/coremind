@@ -1,16 +1,23 @@
+import asyncio
 import json
 import os
 import time
-import asyncio
-from typing import Optional, Tuple, List
+
 from sqlalchemy.future import select
-from server.database import AsyncSessionLocal
-from server.models import Provider, ModelConfig
-from server.config import settings
+
 from core.utils.trace import set_span_attrs
+from server.config import settings
+from server.database import AsyncSessionLocal
+from server.models import ModelConfig, Provider
+
 
 class LLMGateway:
-    def __init__(self, provider: Optional[str] = None, model: Optional[str] = None):
+    """
+    DB 驱动的 LLM 网关：统一模型选取、熔断/降级、用量记录。
+    只保留一次实现，避免与其他目录重复的“多网关”。
+    """
+
+    def __init__(self, provider: str | None = None, model: str | None = None):
         # 优先使用参数，其次 settings 默认值
         self.default_provider_name = provider or settings.llm_provider or "openai"
         self.default_model_name = model
@@ -18,62 +25,71 @@ class LLMGateway:
         self._cb_state: dict[str, list[float]] = {}  # provider -> list of fail timestamps
         self._cb_cooldown: dict[str, float] = {}  # provider -> next allow timestamp
         # 按模型降级链（可由上层注入）
-        self.fallback_models: List[str] = []
+        self.fallback_models: list[str] = []
 
-    async def _get_model_config(self, provider_name: str, model_name: Optional[str]) -> Tuple[Optional[Provider], Optional[ModelConfig]]:
+    async def _get_model_config(
+        self, provider_name: str, model_name: str | None
+    ) -> tuple[Provider | None, ModelConfig | None]:
         """从数据库加载模型配置，优先模型 ID 直查，其次 provider+default"""
         async with AsyncSessionLocal() as session:
             # 先按模型 ID 直接查（避免 provider 名大小写不一致导致 miss）
             if model_name:
-                res = await session.execute(select(ModelConfig).where(
-                    ModelConfig.model_id == model_name,
-                    ModelConfig.is_active == True
-                ))
+                res = await session.execute(
+                    select(ModelConfig).where(
+                        ModelConfig.model_id == model_name, ModelConfig.is_active == True
+                    )
+                )
                 model = res.scalars().first()
                 if model:
-                    res_prov = await session.execute(select(Provider).where(
-                        Provider.id == model.provider_id,
-                        Provider.is_active == True
-                    ))
+                    res_prov = await session.execute(
+                        select(Provider).where(
+                            Provider.id == model.provider_id, Provider.is_active == True
+                        )
+                    )
                     provider = res_prov.scalars().first()
                     return provider, model
 
             # 再按 provider 兜底
-            res = await session.execute(select(Provider).where(
-                Provider.name.ilike(provider_name),
-                Provider.is_active == True
-            ))
+            res = await session.execute(
+                select(Provider).where(
+                    Provider.name.ilike(provider_name), Provider.is_active == True
+                )
+            )
             provider = res.scalars().first()
             if not provider:
                 return None, None
-            
+
             # 查找指定模型或默认模型
             if model_name:
-                res = await session.execute(select(ModelConfig).where(
-                    ModelConfig.provider_id == provider.id, 
-                    ModelConfig.model_id == model_name,
-                    ModelConfig.is_active == True
-                ))
+                res = await session.execute(
+                    select(ModelConfig).where(
+                        ModelConfig.provider_id == provider.id,
+                        ModelConfig.model_id == model_name,
+                        ModelConfig.is_active == True,
+                    )
+                )
                 model = res.scalars().first()
             else:
-                res = await session.execute(select(ModelConfig).where(
-                    ModelConfig.provider_id == provider.id, 
-                    ModelConfig.is_default == True,
-                    ModelConfig.is_active == True
-                ))
+                res = await session.execute(
+                    select(ModelConfig).where(
+                        ModelConfig.provider_id == provider.id,
+                        ModelConfig.is_default == True,
+                        ModelConfig.is_active == True,
+                    )
+                )
                 model = res.scalars().first()
             return provider, model
 
     # ... (保留 _usage_dir, _record_usage, _cb_allowed, _cb_on_fail, _cb_on_success, _http_retry 方法) ...
-    
+
     def _usage_dir(self) -> str:
         base = getattr(settings, "usage_dir_resolved", os.path.join(os.getcwd(), "data", "usage"))
         os.makedirs(base, exist_ok=True)
         return base
 
     def _record_usage(self, kind, provider, model, tokens_in, tokens_out, duration_ms):
-        import json
         import time
+
         path = os.path.join(self._usage_dir(), "usage.jsonl")
         rec = {
             "ts": int(time.time()),
@@ -124,11 +140,13 @@ class LLMGateway:
         if last_err:
             raise last_err
 
-    async def chat(self, prompt: str, context: Optional[str] = None) -> str:
+    async def chat(self, prompt: str, context: str | None = None) -> str:
         t0 = time.perf_counter()
-        
+
         # Load config from DB
-        prov, mdl = await self._get_model_config(self.default_provider_name, self.default_model_name)
+        prov, mdl = await self._get_model_config(
+            self.default_provider_name, self.default_model_name
+        )
 
         # 若主模型缺失，尝试降级链
         if not prov or not mdl:
@@ -146,36 +164,37 @@ class LLMGateway:
 
         # Use DB Config
         import httpx
-        
+
         api_key = prov.api_key
         base_url = prov.base_url
         model_id = mdl.model_id
-        
+        if not base_url:
+            raise RuntimeError(f"LLM provider `{prov.name}` missing base_url")
+        if not model_id:
+            raise RuntimeError(f"LLM model config missing model_id for provider `{prov.name}`")
+
         # OpenAI-compatible generic handler
-        if prov.category == 'llm':
+        if prov.category == "llm":
             content = prompt if not context else f"{prompt}\n\nContext:\n{context}"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
             # Adjust headers/url for specific providers if needed based on provider name
-            if prov.name.lower() == 'dashscope':
+            if prov.name.lower() == "dashscope":
                 # DashScope specific
-                pass # Usually compatible if using compat url
-            
+                pass  # Usually compatible if using compat url
+
             # Construct request
             url = f"{base_url.rstrip('/')}/chat/completions"
             # Handle DashScope compat URL quirk if base_url is raw
             if "dashscope" in base_url and "compatible-mode" not in base_url:
-                 url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+                url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
             body = {
                 "model": model_id,
                 "messages": [{"role": "user", "content": content}],
-                "stream": False
+                "stream": False,
             }
-            
+
             # Merge parameters
             if mdl and mdl.parameters:
                 body.update(mdl.parameters)
@@ -192,17 +211,22 @@ class LLMGateway:
             try:
                 out = await asyncio.to_thread(self._http_retry, _req)
                 dur = int((time.perf_counter() - t0) * 1000)
-                self._record_usage("chat", prov.name, model_id, len(content)//4, len(out)//4, dur)
+                self._record_usage(
+                    "chat", prov.name, model_id, len(content) // 4, len(out) // 4, dur
+                )
                 self._cb_on_success(prov.name)
                 return out
             except Exception as e:
                 self._cb_on_fail(prov.name)
                 set_span_attrs({"llm.error": str(e), "llm.provider": prov.name})
                 raise
-                
-        return ""
 
-    async def health_check(self, provider: Optional[str] = None, model: Optional[str] = None) -> bool:
+        # 未支持的类别明确报错，避免沉默
+        raise RuntimeError(f"Unsupported provider category: {prov.category}")
+
+    async def health_check(self, provider: str | None = None, model: str | None = None) -> bool:
         """简单健康检查：尝试从 DB 读取配置并返回存在性"""
-        prov, mdl = await self._get_model_config(provider or self.default_provider_name, model or self.default_model_name)
+        prov, mdl = await self._get_model_config(
+            provider or self.default_provider_name, model or self.default_model_name
+        )
         return bool(prov and mdl)

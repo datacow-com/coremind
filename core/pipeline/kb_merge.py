@@ -13,7 +13,11 @@ def merge_kb_params(meta: dict[str, Any]) -> dict[str, Any]:
     Precedence: request metadata > KB config > settings default.
     """
     kb_name = meta.get("kb_name") or None
-    kb_cfg = load_kb_config(str(kb_name)) if kb_name else {}
+    try:
+        kb_cfg = load_kb_config(str(kb_name)) if kb_name else {}
+    except Exception:
+        # 防御性兜底：避免不存在/损坏的 KB 配置导致链路中断
+        kb_cfg = {}
 
     def pick(key: str, cast=float, default: Any | None = None):
         if key in meta and meta[key] is not None:

@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { Upload, Folder, Trash2, Download, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Folder, RefreshCw, Search } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { checkFile } from "@/lib/validation";
 import { useToast } from "@/components/ui/toast-provider";
 
 interface DocItem {
@@ -10,63 +9,46 @@ interface DocItem {
   processing_status: string;
   processed_pages: number;
   total_pages: number;
+  file_size?: number;
 }
 
 const FilesManagerPage: React.FC = () => {
+  const [kb, setKb] = useState<string>("");
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [q, setQ] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [errMsg, setErrMsg] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
   const { push } = useToast();
 
   const loadDocs = async () => {
+    if (!kb) {
+      setDocs([]);
+      return;
+    }
+    setLoading(true);
     try {
-      const r = await apiFetch("/api/documents");
+      const r = await apiFetch(`/api/kb/${encodeURIComponent(kb)}/documents`);
       if (r.ok) {
         const d = await r.json();
         setDocs(d.documents || []);
+      } else {
+        setDocs([]);
       }
-    } catch {}
+    } catch (e: any) {
+      push({
+        title: "加载失败",
+        description: e?.message || "无法获取文件列表",
+        variant: "error",
+      });
+      setDocs([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadDocs();
-  }, []);
-
-  const uploadPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || busy) return;
-    setErrMsg("");
-    const ck = checkFile(file, { exts: ["pdf"] });
-    if (!ck.ok) {
-      setErrMsg(ck.error || "文件校验失败");
-      push({ title: "上传失败", description: ck.error, variant: "error" });
-      e.target.value = "";
-      return;
-    }
-    setBusy(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const r = await apiFetch("/api/documents/upload", {
-        method: "POST",
-        body: form,
-      });
-      if (r.ok) await loadDocs();
-    } catch {
-    } finally {
-      setBusy(false);
-      e.target.value = "";
-    }
-  };
-
-  const removeDoc = async (docId: string) => {
-    try {
-      const r = await apiFetch(`/api/documents/${docId}`, { method: "DELETE" });
-      if (r.ok) await loadDocs();
-    } catch {}
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kb]);
 
   const filtered = docs.filter((d) =>
     (d.filename || "").toLowerCase().includes(q.toLowerCase()),
@@ -92,21 +74,24 @@ const FilesManagerPage: React.FC = () => {
                 />
               </div>
               <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf"
-                className="hidden"
-                onChange={uploadPdf}
+                value={kb}
+                onChange={(e) => setKb(e.target.value)}
+                placeholder="输入 KB 名称"
+                className="px-3 py-2 border rounded-md text-sm"
               />
               <button
-                onClick={() => inputRef.current?.click()}
-                className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                onClick={loadDocs}
+                className="px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 flex items-center space-x-1"
               >
-                <Upload className="h-4 w-4 inline mr-1" /> 新增文件
+                <RefreshCw className="h-4 w-4" />
+                <span>刷新</span>
               </button>
             </div>
           </div>
-          {errMsg && <div className="mt-2 text-sm text-red-600">{errMsg}</div>}
+          <div className="px-6 py-2 text-sm text-gray-500">
+            上传与索引请前往“摄取”页，列表数据来自 `{kb}
+            /documents`。下载与预览签名暂未提供。
+          </div>
         </div>
 
         <div className="p-6">
@@ -115,16 +100,21 @@ const FilesManagerPage: React.FC = () => {
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="px-2 py-2">名称</th>
-                  <th className="px-2 py-2">上传日期</th>
                   <th className="px-2 py-2">状态</th>
                   <th className="px-2 py-2">页数</th>
-                  <th className="px-2 py-2">操作</th>
+                  <th className="px-2 py-2">大小</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {loading ? (
                   <tr>
-                    <td className="px-2 py-6 text-gray-500" colSpan={5}>
+                    <td className="px-2 py-6 text-gray-500" colSpan={4}>
+                      加载中...
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td className="px-2 py-6 text-gray-500" colSpan={4}>
                       暂无文件
                     </td>
                   </tr>
@@ -132,30 +122,14 @@ const FilesManagerPage: React.FC = () => {
                   filtered.map((d) => (
                     <tr key={d.id} className="border-t">
                       <td className="px-2 py-2">{d.filename}</td>
-                      <td className="px-2 py-2">
-                        {new Date(
-                          (d as any).upload_date * 1000,
-                        ).toLocaleString()}
-                      </td>
                       <td className="px-2 py-2">{d.processing_status}</td>
                       <td className="px-2 py-2">
                         {d.processed_pages}/{d.total_pages}
                       </td>
-                      <td className="px-2 py-2 space-x-2">
-                        <a
-                          className="text-blue-600 hover:underline"
-                          href={`/api/documents/${d.id}/download`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <Download className="h-4 w-4 inline" /> 下载
-                        </a>
-                        <button
-                          className="text-red-600"
-                          onClick={() => removeDoc(d.id)}
-                        >
-                          <Trash2 className="h-4 w-4 inline" /> 删除
-                        </button>
+                      <td className="px-2 py-2">
+                        {d.file_size
+                          ? `${(d.file_size / 1024 / 1024).toFixed(2)} MB`
+                          : "-"}
                       </td>
                     </tr>
                   ))

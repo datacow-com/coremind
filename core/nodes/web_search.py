@@ -7,6 +7,7 @@ from core.utils.trace import set_span_attrs
 
 
 async def web_search(state: RAGState) -> dict:
+    """LangGraph 联网检索节点：调用配置的 provider，去重并返回 web chunks。"""
     t0 = time.perf_counter()
     query = state.get("query", "")
     meta = state.get("metadata", {}) or {}

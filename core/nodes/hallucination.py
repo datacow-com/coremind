@@ -3,6 +3,7 @@ from server.config import settings
 
 
 async def hallucination(state: RAGState) -> dict:
+    """LangGraph 幻觉检测节点：LLM 自检得分，低于阈值标记 hallucination。"""
     answer = state.get("answer", "")
     chunks: list[RetrievedChunk] = state.get("retrieved_chunks", [])
     context = "\n\n".join([c.get("content", "") for c in chunks])

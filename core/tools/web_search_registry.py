@@ -1,3 +1,6 @@
+import os
+
+from core.tools.config_store import load_web_search_configs
 from core.tools.web_search_provider import (
     BochaSearch,
     SerperSearch,
@@ -15,6 +18,8 @@ def get_web_search_provider(name: str | None = None, timeout: float | None = Non
     """
     nm = (name or "").lower()
     to = timeout if timeout is not None else None
+    cfgs = load_web_search_configs()
+    # Named selection
     if nm == "bocha":
         return BochaSearch(timeout=to or 8.0)
     if nm == "tavily":
@@ -23,7 +28,19 @@ def get_web_search_provider(name: str | None = None, timeout: float | None = Non
         return SerperSearch(timeout=to or 8.0)
     if nm in {"duckduckgo", "ddg", "simple"}:
         return SimpleWebSearch(timeout=to or 8.0)
-    # auto fallback: prefer tavily/serper when keys present
+    # Auto: pick first enabled by priority (DB)，否则回退 env
+    if cfgs:
+        for c in cfgs:
+            n = (c.get("name") or "").lower()
+            if n == "tavily":
+                return TavilySearch(timeout=to or float(c.get("timeout") or 8.0))
+            if n == "serper":
+                return SerperSearch(timeout=to or float(c.get("timeout") or 8.0))
+            if n == "bocha":
+                return BochaSearch(timeout=to or float(c.get("timeout") or 8.0))
+            if n in {"duckduckgo", "ddg", "simple"}:
+                return SimpleWebSearch(timeout=to or float(c.get("timeout") or 8.0))
+    # Env fallback
     if os.environ.get("TAVILY_API_KEY"):
         return TavilySearch(timeout=to or 8.0)
     if os.environ.get("SERPER_API_KEY"):

@@ -23,7 +23,7 @@ import { useFormZod } from "@/hooks/useFormZod";
 import { z } from "zod";
 import { useToast } from "@/components/ui/toast-provider";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
-import { StrategyTab } from "@/components/StrategyTab"; // Import new component
+import { StrategyConfig } from "@/components/StrategyConfig";
 
 const fetch = apiFetch;
 
@@ -37,14 +37,31 @@ const fetch = apiFetch;
 const KnowledgeBaseDetail: React.FC = () => {
   // ... (Existing State) ...
   const { name } = useParams();
-  const [tab, setTab] = useState<string>("files");
+  const [tab, setTab] = useState<string>("strategy");
   const [runtime, setRuntime] = useState<any>({});
   const [kbConfig, setKbConfig] = useState<any>({});
   const [effectiveConfig, setEffectiveConfig] = useState<any>({});
+  const [scenarios, setScenarios] = useState<Record<string, any>>({});
+  const [selectedScenario, setSelectedScenario] = useState<string>("");
+  const [retrievalForm, setRetrievalForm] = useState<any>({
+    top_k_default: 5,
+    candidate_k: 50,
+    vector_weight: 0.6,
+    keyword_weight: 0.4,
+    rrf_k: 60,
+    reranker_filter_threshold: 0.2,
+    enable_rerank: false,
+    rerank_model: "",
+  });
+  const [settingsForm, setSettingsForm] = useState<any>({
+    description: "",
+    stack: "cn",
+    visibility: "private",
+  });
   const { push } = useToast();
 
   // ... (Existing Load Logic) ...
-  
+
   const load = async () => {
     try {
       const r = await fetch(
@@ -54,13 +71,39 @@ const KnowledgeBaseDetail: React.FC = () => {
         const d = await r.json();
         setKbConfig(d.config || {});
         setEffectiveConfig(d.effective_config || {});
+        setRetrievalForm({
+          top_k_default: d.config?.top_k_default ?? 5,
+          candidate_k: d.config?.candidate_k ?? 50,
+          vector_weight: d.config?.vector_weight ?? 0.6,
+          keyword_weight: d.config?.keyword_weight ?? 0.4,
+          rrf_k: d.config?.rrf_k ?? 60,
+          reranker_filter_threshold: d.config?.reranker_filter_threshold ?? 0.2,
+          enable_rerank: d.config?.enable_rerank ?? false,
+          rerank_model: d.config?.rerank_model || "",
+        });
+        setSettingsForm({
+          description: d.config?.description || "",
+          stack: d.config?.stack || "cn",
+          visibility: d.config?.visibility || "private",
+        });
           // ... populate forms ...
+      }
+    } catch {}
+  };
+
+  const loadScenarios = async () => {
+    try {
+      const r = await fetch(`/api/ingest/scenarios`);
+      if (r.ok) {
+        const d = await r.json();
+        setScenarios(d.scenarios || {});
       }
     } catch {}
   };
 
   useEffect(() => {
     load();
+    loadScenarios();
   }, [name]);
 
   const updateKb = async (payload: any) => {
@@ -168,20 +211,199 @@ const KnowledgeBaseDetail: React.FC = () => {
                   <CardTitle>Ingestion Strategy (V4 Pipeline)</CardTitle>
               </CardHeader>
               <CardContent>
-                  <StrategyTab config={kbConfig} onUpdate={updateKb} />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm">场景预设</label>
+                      <select
+                        value={selectedScenario}
+                        onChange={(e) => setSelectedScenario(e.target.value)}
+                        className="border rounded p-2"
+                      >
+                        <option value="">不应用预设</option>
+                        {Object.keys(scenarios).map((k) => (
+                          <option key={k} value={k}>
+                            {k}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="px-3 py-1 border rounded text-sm"
+                        onClick={() => {
+                          if (selectedScenario && scenarios[selectedScenario]) {
+                            updateKb({ strategy_config: scenarios[selectedScenario], scenario: selectedScenario });
+                            setKbConfig((prev: any) => ({
+                              ...prev,
+                              strategy_config: {
+                                ...(prev?.strategy_config || {}),
+                                ...scenarios[selectedScenario],
+                              },
+                            }));
+                          }
+                        }}
+                      >
+                        应用预设
+                      </button>
+                    </div>
+
+                    <StrategyConfig
+                      initialConfig={kbConfig.strategy_config || effectiveConfig.strategy_config || {}}
+                      onSubmit={(cfg: any) => updateKb({ strategy_config: cfg })}
+                    />
+                  </div>
               </CardContent>
             </Card>
           </div>
         )}
 
           {tab === "retrieval" && (
-             /* Reuse existing retrieval form */
-             <div className="text-gray-500">检索参数组件 (Placeholder)</div>
+             <Card className="max-w-3xl">
+               <CardHeader>
+                 <CardTitle>检索参数</CardTitle>
+               </CardHeader>
+               <CardContent className="space-y-4">
+                 <div className="space-y-2">
+                   <Label>Top K</Label>
+                   <Input
+                     type="number"
+                     value={retrievalForm.top_k_default ?? 5}
+                     onChange={(e) =>
+                       setRetrievalForm({ ...retrievalForm, top_k_default: Number(e.target.value) })
+                     }
+                   />
+                 </div>
+                 <div className="space-y-2">
+                   <Label>Rerank Model</Label>
+                   <Input
+                     placeholder="cross-encoder/bge-rerank"
+                     value={retrievalForm.rerank_model || ""}
+                     onChange={(e) => setRetrievalForm({ ...retrievalForm, rerank_model: e.target.value })}
+                   />
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div className="space-y-2">
+                     <Label>候选数</Label>
+                     <Input
+                       type="number"
+                       value={retrievalForm.candidate_k ?? 50}
+                       onChange={(e) =>
+                         setRetrievalForm({ ...retrievalForm, candidate_k: Number(e.target.value) })
+                       }
+                     />
+                   </div>
+                   <div className="space-y-2">
+                     <Label>RRF K</Label>
+                     <Input
+                       type="number"
+                       value={retrievalForm.rrf_k ?? 60}
+                       onChange={(e) =>
+                         setRetrievalForm({ ...retrievalForm, rrf_k: Number(e.target.value) })
+                       }
+                     />
+                   </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div className="space-y-2">
+                     <Label>向量权重</Label>
+                     <Input
+                       type="number"
+                       step="0.05"
+                       value={retrievalForm.vector_weight ?? 0.6}
+                       onChange={(e) =>
+                         setRetrievalForm({ ...retrievalForm, vector_weight: Number(e.target.value) })
+                       }
+                     />
+                   </div>
+                   <div className="space-y-2">
+                     <Label>关键词权重</Label>
+                     <Input
+                       type="number"
+                       step="0.05"
+                       value={retrievalForm.keyword_weight ?? 0.4}
+                       onChange={(e) =>
+                         setRetrievalForm({ ...retrievalForm, keyword_weight: Number(e.target.value) })
+                       }
+                     />
+                   </div>
+                 </div>
+                 <div className="space-y-2">
+                   <Label>Rerank 过滤阈值</Label>
+                   <Input
+                     type="number"
+                     step="0.01"
+                     value={retrievalForm.reranker_filter_threshold ?? 0.2}
+                     onChange={(e) =>
+                       setRetrievalForm({
+                         ...retrievalForm,
+                         reranker_filter_threshold: Number(e.target.value),
+                       })
+                     }
+                   />
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <Switch
+                     checked={!!retrievalForm.enable_rerank}
+                     onChange={(e) => setRetrievalForm({ ...retrievalForm, enable_rerank: e.target.checked })}
+                   />
+                   <span>启用 Rerank</span>
+                 </div>
+                 <div className="flex justify-end">
+                   <Button
+                     onClick={async () => {
+                      await updateKb({ ...retrievalForm });
+                      load();
+                    }}
+                   >
+                     保存检索参数
+                   </Button>
+                 </div>
+               </CardContent>
+             </Card>
           )}
 
           {tab === "settings" && (
-             /* Reuse existing settings form */
-             <div className="text-gray-500">基础设置组件 (Placeholder)</div>
+             <Card className="max-w-3xl">
+               <CardHeader>
+                 <CardTitle>基础设置</CardTitle>
+               </CardHeader>
+               <CardContent className="space-y-4">
+                 <div className="space-y-2">
+                   <Label>描述</Label>
+                   <Input
+                     value={settingsForm.description || ""}
+                     onChange={(e) => setSettingsForm({ ...settingsForm, description: e.target.value })}
+                   />
+                 </div>
+                 <div className="space-y-2">
+                   <Label>语言</Label>
+                   <Input
+                     value={settingsForm.stack || "cn"}
+                     onChange={(e) => setSettingsForm({ ...settingsForm, stack: e.target.value })}
+                   />
+                 </div>
+                 <div className="space-y-2">
+                   <Label>可见性</Label>
+                   <select
+                     className="border rounded p-2"
+                     value={settingsForm.visibility || "private"}
+                     onChange={(e) => setSettingsForm({ ...settingsForm, visibility: e.target.value })}
+                   >
+                     <option value="private">Private</option>
+                     <option value="org">Org</option>
+                     <option value="public">Public</option>
+                   </select>
+                 </div>
+                 <div className="flex justify-end">
+                   <Button
+                     onClick={async () => {
+                      await updateKb({ ...settingsForm });
+                      load();
+                    }}
+                   >
+                     保存基础设置
+                   </Button>
+                 </div>
+               </CardContent>
+             </Card>
                   )}
                 </div>
           </div>

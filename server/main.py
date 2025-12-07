@@ -8,15 +8,11 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from langserve import add_routes
 
-from core.graph import create_graph
-from core.ingestion import create_ingest_graph
 from server.config import settings
 from server.database import init_db
 from server.health import get_health
 from server.logging import init_logging
-from server.model_gateway_routes import router as model_gateway_router
 from server.routes import router as api_router
 from server.routes import secure_router as api_secure_router
 
@@ -104,15 +100,8 @@ async def startup_event():
         pass
 
 
-rag_app = create_graph()
-add_routes(app, rag_app, path="/rag")
-ingest_app = create_ingest_graph()
-add_routes(app, ingest_app, path="/ingest")
-
 app.include_router(api_router, prefix="/api")
 app.include_router(api_secure_router, prefix="/api")
-app.include_router(model_gateway_router, prefix="/api")
-
 # Optional Prometheus /metrics
 try:
     import prometheus_client
