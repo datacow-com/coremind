@@ -18,6 +18,7 @@ class GraphDeepState(TypedDict):
     entity_types: list[str] | None
     chunks: list[str]
     graph: dict[str, Any]
+    communities: list[dict[str, Any]]  # Louvain communities
     meta: dict[str, Any]
 
 
@@ -96,18 +97,183 @@ async def extract_graph(state: GraphDeepState) -> GraphDeepState:
     return state
 
 
+async def detect_communities(state: GraphDeepState) -> GraphDeepState:
+    """
+    Detect communities using Louvain algorithm.
+
+    Requires networkx with community detection support.
+    Falls back gracefully if not available.
+    """
+    graph_data = state.get("graph", {})
+    nodes = graph_data.get("nodes", [])
+    edges = graph_data.get("edges", [])
+
+    if not nodes or not edges:
+        state["communities"] = []
+        return state
+
+    try:
+        import networkx as nx
+        from networkx.algorithms.community import louvain_communities
+    except ImportError:
+        # Fallback: treat all nodes as one community
+        state["communities"] = [
+            {
+                "id": 0,
+                "level": 0,
+                "members": [n["entity_name"] for n in nodes],
+                "size": len(nodes),
+                "summary": "",
+            }
+        ]
+        return state
+
+    # Build networkx graph
+    G = nx.Graph()
+
+    # Add nodes with attributes
+    for node in nodes:
+        G.add_node(
+            node["entity_name"],
+            entity_type=node.get("entity_type"),
+            description=node.get("description", ""),
+        )
+
+    # Add edges with weights
+    for edge in edges:
+        G.add_edge(
+            edge["src_id"],
+            edge["tgt_id"],
+            weight=edge.get("weight", 1),
+            description=edge.get("description", ""),
+        )
+
+    # Detect communities with Louvain
+    try:
+        resolution = float(os.environ.get("LOUVAIN_RESOLUTION", "1.0"))
+        communities = louvain_communities(G, weight="weight", resolution=resolution, seed=42)
+
+        community_list = []
+        for idx, members in enumerate(communities):
+            member_list = sorted(list(members))
+
+            # Generate community summary (top entities by degree)
+            subgraph = G.subgraph(members)
+            degrees = dict(subgraph.degree())
+            top_entities = sorted(degrees.keys(), key=lambda x: degrees[x], reverse=True)[:5]
+
+            community_list.append(
+                {
+                    "id": idx,
+                    "level": 1,  # Single-level Louvain
+                    "members": member_list,
+                    "size": len(members),
+                    "top_entities": top_entities,
+                    "internal_edges": subgraph.number_of_edges(),
+                    "summary": "",  # Can be filled by LLM later
+                }
+            )
+
+        state["communities"] = community_list
+
+    except Exception:
+        # Fallback: single community
+        state["communities"] = [
+            {
+                "id": 0,
+                "level": 0,
+                "members": [n["entity_name"] for n in nodes],
+                "size": len(nodes),
+                "summary": "",
+            }
+        ]
+
+    return state
+
+
+async def summarize_communities(state: GraphDeepState) -> GraphDeepState:
+    """
+    Generate LLM summaries for each community.
+
+    Uses top entities and internal relationships to create descriptive summaries.
+    """
+    communities = state.get("communities", [])
+    if not communities:
+        return state
+
+    # Only summarize if enabled
+    if os.environ.get("GRAPH_COMMUNITY_SUMMARIZE", "").lower() not in ("true", "1"):
+        return state
+
+    gw = LLMGateway(provider=(settings.llm_provider or "dashscope"))
+    graph_data = state.get("graph", {})
+    nodes_map = {n["entity_name"]: n for n in graph_data.get("nodes", [])}
+
+    async def summarize_one(community: dict) -> dict:
+        members = community.get("members", [])[:10]  # Limit for prompt
+        top_entities = community.get("top_entities", [])[:5]
+
+        # Build context from entities
+        entity_info = []
+        for name in top_entities:
+            node = nodes_map.get(name, {})
+            desc = node.get("description", "")[:200]
+            entity_info.append(f"- {name} ({node.get('entity_type', 'unknown')}): {desc}")
+
+        prompt = f"""Summarize this knowledge graph community in 1-2 sentences.
+
+Top entities:
+{chr(10).join(entity_info)}
+
+Total members: {len(members)}
+
+Summary:"""
+
+        try:
+            summary = await gw.chat(prompt)
+            community["summary"] = summary.strip()
+        except Exception:
+            community["summary"] = (
+                f"Community with {len(members)} entities including {', '.join(top_entities[:3])}"
+            )
+
+        return community
+
+    # Summarize communities concurrently
+    sem = asyncio.Semaphore(4)
+
+    async def run(c):
+        async with sem:
+            return await summarize_one(c)
+
+    summarized = await asyncio.gather(*[run(c) for c in communities], return_exceptions=True)
+    state["communities"] = [c for c in summarized if isinstance(c, dict)]
+
+    return state
+
+
 async def store_graph(state: GraphDeepState) -> GraphDeepState:
     base = settings.uploads_dir_resolved
     out_dir = os.path.join(base, "knowledge_graphs")
     os.makedirs(out_dir, exist_ok=True)
     name = str(state.get("kb_name") or "default")
-    path = os.path.join(out_dir, f"{name}.graph.deep.json")
-    with open(path, "w", encoding="utf-8") as f:
+
+    # Store graph
+    graph_path = os.path.join(out_dir, f"{name}.graph.deep.json")
+    with open(graph_path, "w", encoding="utf-8") as f:
         json.dump(state.get("graph") or {}, f, ensure_ascii=False, indent=2)
+
+    # Store communities
+    communities_path = os.path.join(out_dir, f"{name}.communities.json")
+    with open(communities_path, "w", encoding="utf-8") as f:
+        json.dump(state.get("communities") or [], f, ensure_ascii=False, indent=2)
+
     meta = state.get("meta") or {}
-    meta["graph_path_deep"] = path
+    meta["graph_path_deep"] = graph_path
+    meta["communities_path"] = communities_path
     meta["node_count"] = len((state.get("graph") or {}).get("nodes", []))
     meta["edge_count"] = len((state.get("graph") or {}).get("edges", []))
+    meta["community_count"] = len(state.get("communities") or [])
     state["meta"] = meta
     return state
 
@@ -116,9 +282,15 @@ def create_graphrag_deep_graph():
     g = StateGraph(GraphDeepState)
     g.add_node("collect_texts", collect_texts)
     g.add_node("extract_graph", extract_graph)
+    g.add_node("detect_communities", detect_communities)
+    g.add_node("summarize_communities", summarize_communities)
     g.add_node("store_graph", store_graph)
+
     g.set_entry_point("collect_texts")
     g.add_edge("collect_texts", "extract_graph")
-    g.add_edge("extract_graph", "store_graph")
+    g.add_edge("extract_graph", "detect_communities")
+    g.add_edge("detect_communities", "summarize_communities")
+    g.add_edge("summarize_communities", "store_graph")
+
     mem = MemorySaver()
     return g.compile(checkpointer=mem)

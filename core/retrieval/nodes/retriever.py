@@ -2,6 +2,7 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from core.embedding.registry import get_embedder
 from core.state import RetrievalState, RetrievedChunk
+from core.storage.channel_utils import channel_collection_name, channel_index_name
 from core.storage.kb_config import load_kb_config
 from core.storage.keyword_store import get_keyword_client
 from core.storage.vector_store import get_vector_client
@@ -13,9 +14,14 @@ class HybridRetriever:
         with retrieval_latency.time():
             cfg = state["strategy_config"]
             queries = state["preprocessed_queries"]
-            kb_name = state["kb_name"]
-            kb_cfg = load_kb_config(kb_name) if kb_name else {}
-            top_k = cfg.get("top_k", kb_cfg.get("top_k_default", 10))
+            channel_id = state.get("channel_id")  # Multi-channel support
+
+            # Support both kb_names (list) and kb_name (string) for compatibility
+            kb_names = state.get("kb_names") or []
+            if not kb_names and state.get("kb_name"):
+                kb_names = [state.get("kb_name")]
+
+            top_k = cfg.get("top_k", 10)
             intent = state.get("intent", {})
 
             vector_client = get_vector_client()
@@ -31,10 +37,6 @@ class HybridRetriever:
 
             intent_type = intent.get("type")
             filters = intent.get("filters", {})
-
-            # Determine required filters based on intent
-            # E.g., if "table_query", force block_type='table'
-            # E.g., language filter
 
             must_conditions = []
 
@@ -57,31 +59,38 @@ class HybridRetriever:
                 )
                 es_filters["language"] = lang
 
-            # Apply filters if any
             if must_conditions:
                 qdrant_filter = Filter(must=must_conditions)
 
-            # Execute Search（向量/关键词并行）
             import asyncio
 
-            async def _search_once(q: str):
+            async def _search_kb(kb_name: str, q: str):
+                """Search a single KB with channel isolation."""
+                kb_cfg = load_kb_config(kb_name) if kb_name else {}
+                version = kb_cfg.get("version", 1)
+
                 if asyncio.iscoroutinefunction(embedder.embed):
                     vec = await embedder.embed(q)
                 else:
                     vec = await asyncio.to_thread(embedder.embed, q)
 
                 async def _v():
+                    # Use channel-aware collection name
+                    collection = kb_cfg.get("collection_name") or channel_collection_name(
+                        channel_id, kb_name, version
+                    )
                     return await vector_client.search(
-                        collection_name=kb_cfg.get("collection_name")
-                        or f"kb_{kb_name}_v{kb_cfg.get('version', 1)}",
+                        collection_name=collection,
                         query_vector=vec.tolist(),
                         limit=top_k * 2,
                         query_filter=qdrant_filter,
                     )
 
                 async def _k():
+                    # Use channel-aware index name
+                    index_name = channel_index_name(channel_id, kb_name)
                     return await keyword_client.search(
-                        index_name=f"kb_{kb_name}_docs",
+                        index_name=index_name,
                         query=q,
                         limit=top_k * 2,
                         filters=es_filters,
@@ -90,10 +99,12 @@ class HybridRetriever:
                 v_res, k_res = await asyncio.gather(_v(), _k())
                 return v_res, k_res
 
+            # Search across all KBs and queries
             for query in queries:
-                v_res, k_res = await _search_once(query)
-                vector_results.extend(v_res)
-                keyword_results.extend(k_res)
+                for kb_name in kb_names:
+                    v_res, k_res = await _search_kb(kb_name, query)
+                    vector_results.extend(v_res)
+                    keyword_results.extend(k_res)
 
             # RRF Fusion
             fused = self._rrf_fusion(

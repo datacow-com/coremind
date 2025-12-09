@@ -85,6 +85,7 @@ async def run_ingest(request: Request):
     strategy_config = StrategyConfig(**merged).dict()
 
     initial_state = IngestState(
+        channel_id=body.get("channel_id", "default"),
         task_id=task_id,
         file_path=body["file_path"],
         file_type=body.get("file_type", "pdf"),
@@ -92,6 +93,7 @@ async def run_ingest(request: Request):
         kb_name=kb_name,
         version=body.get("version", 1),
         strategy_config=strategy_config,
+        capability_loader=None,  # TODO: Load capabilities via prepare_kb_capabilities
         processing_stage="upload",
         retry_count=0,
         error_log=[],
@@ -179,6 +181,7 @@ async def upload_and_run_ingest(
     strategy = StrategyConfig(**config_dict).dict()
 
     initial_state = IngestState(
+        channel_id="default",  # TODO: Get from request context
         task_id=str(uuid.uuid4()),
         file_path=key,
         file_type=file_type,
@@ -186,6 +189,7 @@ async def upload_and_run_ingest(
         kb_name=kb_name or "default",
         version=version,
         strategy_config=strategy,
+        capability_loader=None,  # TODO: Load capabilities via prepare_kb_capabilities
         processing_stage="upload",
         retry_count=0,
         error_log=[],
@@ -242,6 +246,7 @@ async def upload_and_run_ingest_stream(
     strategy = StrategyConfig(**config_dict).dict()
 
     initial_state = IngestState(
+        channel_id="default",  # TODO: Get from request context
         task_id=str(uuid.uuid4()),
         file_path=key,
         file_type=file_type,
@@ -249,6 +254,7 @@ async def upload_and_run_ingest_stream(
         kb_name=kb_name or "default",
         version=version,
         strategy_config=strategy,
+        capability_loader=None,  # TODO: Load capabilities via prepare_kb_capabilities
         processing_stage="upload",
         retry_count=0,
         error_log=[],

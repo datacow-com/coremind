@@ -31,6 +31,90 @@ def default_kb_config(name: str) -> dict[str, Any]:
         "collection_name": None,
         "web_search_enabled": bool(getattr(settings, "web_search_enabled", True)),
         "web_search_provider": getattr(settings, "web_search_provider", None),
+        # ═══════════════════════════════════════════════════════════════════
+        # 能力配置 (Capabilities) - 可见、可选、可配、可用
+        # ═══════════════════════════════════════════════════════════════════
+        "capabilities": {
+            # 基础能力 (默认启用)
+            "basic": {
+                "text_extraction": True,
+                "chunking": {
+                    "enabled": True,
+                    "mode": "fixed",
+                    "chunk_size": 512,
+                    "overlap": 50,
+                },
+                "embedding": {
+                    "enabled": True,
+                    "model": "BAAI/bge-m3",
+                },
+            },
+            # 增强能力 (可选)
+            "enhanced": {
+                "table_recognition": {
+                    "enabled": False,
+                    "model": "table_transformer",
+                    "output_format": "markdown",
+                },
+                "ocr": {
+                    "enabled": False,
+                    "engine": "paddleocr",
+                    "languages": ["zh", "en"],
+                },
+                "image_understanding": {
+                    "enabled": False,
+                    "vlm_provider": "qwen-vl",
+                    "detail_level": "detailed",
+                },
+                "semantic_chunking": {
+                    "enabled": False,
+                },
+                "reranking": {
+                    "enabled": True,
+                    "provider": "cross_encoder",
+                },
+            },
+            # 专业能力 (按需)
+            "pro": {
+                "video_understanding": {
+                    "enabled": False,
+                },
+                "excel_analysis": {
+                    "enabled": False,
+                },
+                "comic_recognition": {
+                    "enabled": False,
+                },
+                "layout_analysis": {
+                    "enabled": False,
+                },
+            },
+            # 高级能力 (知识增强)
+            "advanced": {
+                "raptor": {
+                    "enabled": False,
+                    "scope": "whole_kb",
+                    "max_clusters": 64,
+                    "levels": 3,
+                },
+                "graphrag": {
+                    "enabled": False,
+                    "entity_types": ["person", "organization", "geo", "event"],
+                    "community_detection": True,
+                },
+                "multimodal_retrieval": {
+                    "enabled": False,
+                },
+                "hallucination_detection": {
+                    "enabled": False,
+                },
+                "web_search": {
+                    "enabled": False,
+                    "provider": "tavily",
+                },
+            },
+        },
+        # Legacy 字段 (向后兼容)
         "ingestion_pipeline": {
             "enabled": True,
             "template": "general",

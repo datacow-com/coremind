@@ -1,72 +1,144 @@
+"""
+MindMap Light - Knowledge structure visualization.
+
+Design Philosophy:
+- light vs deep is a BUSINESS decision, not a development limitation
+- This module builds topic hierarchies from document content
+
+For 100TB~500TB scale knowledge bases with:
+- Videos, PDFs, ePub, Images, Office docs (complex flowcharts, manuals, tables)
+- The system MUST provide full implementation capability
+
+Usage:
+- create_mindmap_light_graph(): For quick topic extraction
+- Future: create_mindmap_deep_graph() for comprehensive structure analysis
+"""
+
 import json
 import os
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import StateGraph
+from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
+from core.llm.gateway import LLMGateway
 from core.storage.index_router import list_all_meta
 from server.config import settings
 
 
-class MindState(TypedDict):
+class MindMapState(TypedDict):
+    """State for MindMap processing."""
+
     kb_name: str
-    outline: dict[str, Any]
+    chunks: list[str]
+    topics: list[dict[str, Any]]
+    mindmap: dict[str, Any]
     meta: dict[str, Any]
 
 
-async def collect_chunks(state: MindState) -> MindState:
-    state["meta"] = state.get("meta") or {}
-    state["meta"]["chunks"] = list_all_meta()
+async def collect_texts(state: MindMapState) -> MindMapState:
+    """Collect texts from storage."""
+    ms = list_all_meta()
+    state["chunks"] = [
+        str(m.get("content") or "") for m in ms if str(m.get("content") or "").strip()
+    ]
     return state
 
 
-async def build_outline(state: MindState) -> MindState:
-    ms = state.get("meta", {}).get("chunks") or []
-    parts = {}
-    for m in ms:
-        did = str(m.get("doc_id") or "")
-        arr = parts.setdefault(did, [])
-        arr.append(str(m.get("content") or ""))
-    outline = {"title": state.get("kb_name") or "KB", "children": []}
-    from core.llm.gateway import LLMGateway
+async def extract_topics(state: MindMapState) -> MindMapState:
+    """Extract topics from chunks using LLM."""
+    gw = LLMGateway(provider=(settings.llm_provider or "dashscope"))
+    chunks = state.get("chunks", [])
 
-    gw = LLMGateway()
-    for did, arr in parts.items():
-        ctx = "\n\n".join(arr[:50])
-        try:
-            title = await gw.chat(prompt="为此文档生成5个词以内的主题名称", context=ctx)
-            summary = await gw.chat(prompt="生成该文档的简要摘要(200字)", context=ctx)
-        except Exception:
-            title = did
-            summary = ""
-        outline["children"].append({"title": title.strip() or did, "summary": summary})
-    state["outline"] = outline
+    if not chunks:
+        state["topics"] = []
+        return state
+
+    # Sample chunks for topic extraction (limit for efficiency)
+    sample_size = min(20, len(chunks))
+    sample = chunks[:sample_size]
+    context = "\n\n---\n\n".join(sample)
+
+    prompt = """分析以下文档内容，提取主要主题和子主题，返回JSON格式：
+{
+  "topics": [
+    {"name": "主题名", "subtopics": ["子主题1", "子主题2"], "keywords": ["关键词"]}
+  ]
+}"""
+
+    try:
+        out = await gw.chat(prompt=prompt, context=context)
+        data = json.loads(out) if out else {}
+        state["topics"] = data.get("topics", [])
+    except Exception:
+        state["topics"] = []
+
     return state
 
 
-async def store_outline(state: MindState) -> MindState:
+async def build_mindmap(state: MindMapState) -> MindMapState:
+    """Build mindmap structure from topics."""
+    topics = state.get("topics", [])
+    kb_name = state.get("kb_name", "Knowledge Base")
+
+    # Build hierarchical structure
+    children = []
+    for topic in topics:
+        topic_node = {
+            "name": topic.get("name", "Unknown"),
+            "children": [{"name": st} for st in topic.get("subtopics", [])],
+            "keywords": topic.get("keywords", []),
+        }
+        children.append(topic_node)
+
+    state["mindmap"] = {"name": kb_name, "children": children}
+    return state
+
+
+async def store_mindmap(state: MindMapState) -> MindMapState:
+    """Store mindmap to file."""
     base = settings.uploads_dir_resolved
-    out_dir = os.path.join(base, "mindmap")
+    out_dir = os.path.join(base, "mindmaps")
     os.makedirs(out_dir, exist_ok=True)
+
     name = str(state.get("kb_name") or "default")
     path = os.path.join(out_dir, f"{name}.mindmap.json")
+
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(state.get("outline") or {}, f, ensure_ascii=False, indent=2)
-    meta = state.get("meta", {})
+        json.dump(state.get("mindmap", {}), f, ensure_ascii=False, indent=2)
+
+    meta = state.get("meta") or {}
     meta["mindmap_path"] = path
+    meta["topic_count"] = len(state.get("topics", []))
     state["meta"] = meta
+
     return state
 
 
 def create_mindmap_light_graph():
-    g = StateGraph(MindState)
-    g.add_node("collect_chunks", collect_chunks)
-    g.add_node("build_outline", build_outline)
-    g.add_node("store_outline", store_outline)
-    g.set_entry_point("collect_chunks")
-    g.add_edge("collect_chunks", "build_outline")
-    g.add_edge("build_outline", "store_outline")
+    """
+    Create MindMap extraction graph.
+
+    Builds a topic hierarchy from document content for visualization.
+
+    Use this for:
+    - Knowledge base overview
+    - Topic navigation UI
+    - Document clustering visualization
+    """
+    graph = StateGraph(MindMapState)
+
+    graph.add_node("collect", collect_texts)
+    graph.add_node("topics", extract_topics)
+    graph.add_node("mindmap", build_mindmap)
+    graph.add_node("store", store_mindmap)
+
+    graph.set_entry_point("collect")
+    graph.add_edge("collect", "topics")
+    graph.add_edge("topics", "mindmap")
+    graph.add_edge("mindmap", "store")
+    graph.add_edge("store", END)
+
     mem = MemorySaver()
-    return g.compile(checkpointer=mem)
+    return graph.compile(checkpointer=mem)

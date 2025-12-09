@@ -4,7 +4,7 @@ from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql import func
 
-from .database import Base
+from .base import Base
 
 
 class Provider(Base):
@@ -99,6 +99,6 @@ class KBDocument(Base):
     filename = Column(String(500), nullable=False)
     path = Column(String(1000), nullable=False)
     uploaded_at = Column(Integer, default=0)
-    metadata = Column(JSON, default={})
+    doc_metadata = Column(JSON, default={})
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

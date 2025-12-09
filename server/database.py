@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from .models import Base
+from .base import Base
 
 # Database configuration
 _RAW_DB_URL = os.getenv(

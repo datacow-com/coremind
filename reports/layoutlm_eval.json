@@ -1,8 +1,0 @@
-{
-  "pdf": "data/samples/pdf/arxiv_sample.pdf",
-  "total_blocks": 2185,
-  "distribution": {
-    "unknown": 2185
-  },
-  "class_model": "nielsr/layoutlmv3-finetuned-funsd"
-}

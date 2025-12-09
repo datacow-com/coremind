@@ -48,3 +48,9 @@ def get_web_search_provider(name: str | None = None, timeout: float | None = Non
     if os.environ.get("BOCHA_WEB_SEARCH_API_KEY") or os.environ.get("BOCHA_BASE_URL"):
         return BochaSearch(timeout=to or 8.0)
     return SimpleWebSearch(timeout=to or 8.0)
+
+
+# Alias for backward compatibility
+def get_web_search_client(name: str | None = None, timeout: float | None = None):
+    """Alias for get_web_search_provider."""
+    return get_web_search_provider(name, timeout)

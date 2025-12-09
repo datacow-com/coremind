@@ -112,9 +112,7 @@ if prometheus_client:
     from fastapi import Header, Response
 
     @app.get("/metrics")
-    async def metrics(
-        authorization: str | None = Header(default=None), request: Request | None = None
-    ):
+    async def metrics(authorization: str | None = Header(default=None)):
         token = os.environ.get("METRICS_TOKEN") or getattr(settings, "metrics_token", None)
         if token:
             # Expect Authorization: Bearer <token>

@@ -24,17 +24,16 @@ from core.algorithms.mindmap_light import create_mindmap_light_graph
 from core.algorithms.raptor_deep import create_raptor_deep_graph
 from core.algorithms.raptor_light import create_raptor_light_graph
 from core.graph import create_graph
-from core.model_gateway.config_store import (
+from core.llm.provider_config import (
     load_config,
     provider_category,
     save_config,
     validate_provider,
 )
-from core.nodes.retrieve import retrieve as retrieve_node
 from core.pipeline.kb_merge import merge_kb_params
 from core.pipeline.rag_scenarios import get_rag_scenario_pipelines
 from core.pipeline.registry import get_pipeline_registry
-from core.state import RAGState
+from core.retrieval.nodes.retriever import HybridRetriever
 from core.storage.index_router import (
     delete_document,
     doc_stats,
@@ -87,6 +86,7 @@ def get_rag_app():
 def _kb_registry_add(kb_name: str, entry: dict[str, Any]) -> None:
     try:
         from core.storage.kb_config_db import register_doc
+
         register_doc(kb_name, entry)
     except Exception:
         pass
@@ -95,6 +95,7 @@ def _kb_registry_add(kb_name: str, entry: dict[str, Any]) -> None:
 def _kb_registry_remove(document_id: str, kb_name: str | None = None) -> None:
     try:
         from core.storage.kb_config_db import remove_doc
+
         remove_doc(document_id, kb_name)
     except Exception:
         pass
@@ -322,7 +323,10 @@ async def get_page_preview(document_id: str, page_number: int):
 
 @router.get("/documents/{document_id}/status")
 async def get_document_status(document_id: str):
-    return {"status": "error", "message": "deprecated, use /api/ingest/upload_run/stream for progress"}
+    return {
+        "status": "error",
+        "message": "deprecated, use /api/ingest/upload_run/stream for progress",
+    }
 
 
 @router.delete("/documents/{document_id}")
@@ -339,7 +343,10 @@ async def list_documents():
 
 @router.get("/documents/{document_id}/download")
 async def download_document(document_id: str):
-    return {"status": "error", "message": "deprecated, use /api/ingest/upload_run with blob storage"}
+    return {
+        "status": "error",
+        "message": "deprecated, use /api/ingest/upload_run with blob storage",
+    }
 
 
 @secure_router.get("/models/providers")
@@ -550,7 +557,7 @@ async def chat_stream(
             user_id=user.get("id", "anonymous"),
             strategy_config={
                 "top_k": req.top_k,
-                "embedding_model": getattr(settings, "embedding_model", "BAAI/bge-m3")
+                "embedding_model": getattr(settings, "embedding_model", "BAAI/bge-m3"),
             },
             preprocessed_queries=[],
             intent={},
@@ -566,7 +573,7 @@ async def chat_stream(
             final_answer="",
             citations=[],
             confidence=0.0,
-            sources=[]
+            sources=[],
         )
 
         app = create_qa_graph()
@@ -574,14 +581,18 @@ async def chat_stream(
         async def event_gen():
             yield "data: " + json.dumps({"type": "meta", "request_id": str(uuid4())}) + "\n\n"
             async for event in app.astream_events(initial_state, version="v1"):
-                event_type = event['event']
+                event_type = event["event"]
                 if event_type == "on_chain_start":
-                    yield "data: " + json.dumps({"type": "phase", "name": event['name'], "status": "start"}) + "\n\n"
+                    yield (
+                        "data: "
+                        + json.dumps({"type": "phase", "name": event["name"], "status": "start"})
+                        + "\n\n"
+                    )
                 elif event_type == "on_chain_end":
-                    if event['name'] == 'generator':
-                        output = event['data'].get('output', {})
-                        final_answer = output.get('final_answer', "")
-                        citations = output.get('citations', [])
+                    if event["name"] == "generator":
+                        output = event["data"].get("output", {})
+                        final_answer = output.get("final_answer", "")
+                        citations = output.get("citations", [])
                         for c in citations:
                             cit_payload = {
                                 "doc_id": c.get("doc_id"),
@@ -589,18 +600,28 @@ async def chat_stream(
                                 "bbox": c.get("bbox"),
                                 "chunk_id": c.get("chunk_id"),
                                 "score": 1.0,
-                                "content": c.get("content")
+                                "content": c.get("content"),
                             }
-                            yield "data: " + json.dumps({"type": "citation", **cit_payload}) + "\n\n"
-                        yield "data: " + json.dumps({"type": "answer", "delta": final_answer}) + "\n\n"
+                            yield (
+                                "data: " + json.dumps({"type": "citation", **cit_payload}) + "\n\n"
+                            )
+                        yield (
+                            "data: "
+                            + json.dumps({"type": "answer", "delta": final_answer})
+                            + "\n\n"
+                        )
                         final_payload = {
                             "type": "final",
                             "answer": final_answer,
                             "sources": citations,
-                            "conversation_id": req.conversation_id or str(uuid4())
+                            "conversation_id": req.conversation_id or str(uuid4()),
                         }
                         yield "data: " + json.dumps(final_payload) + "\n\n"
-                    yield "data: " + json.dumps({"type": "phase", "name": event['name'], "status": "end"}) + "\n\n"
+                    yield (
+                        "data: "
+                        + json.dumps({"type": "phase", "name": event["name"], "status": "end"})
+                        + "\n\n"
+                    )
 
         return StreamingResponse(
             event_gen(), media_type="text/event-stream", headers={"Connection": "close"}
@@ -677,10 +698,41 @@ async def chat_stream(
         except Exception:
             pass
 
-    state: RAGState = {"query": req.query, "metadata": meta}
-    # phase: retrieve
-    ret = await retrieve_node(state)
-    chunks = ret.get("retrieved_chunks") or []
+    # Build RetrievalState for V4 HybridRetriever
+    kb_name = meta.get("kb_name", "")
+    retrieval_state = {
+        "channel_id": "",  # TODO: Get from session/auth context
+        "session_id": "",  # TODO: Get from session
+        "query_id": "",
+        "input_query": req.query,
+        "chat_history": [],
+        "kb_names": [kb_name] if kb_name else [],
+        "user_id": "",
+        "strategy_config": {
+            "top_k": meta.get("top_k", 10),
+            "embedding_model": meta.get("embedding_model"),
+            "rrf_k": 60,
+        },
+        "preprocessed_queries": [req.query],
+        "intent": {},
+        "vector_results": [],
+        "keyword_results": [],
+        "fused_results": [],
+        "reranked_results": [],
+        "retrieved_chunks": [],
+        "relevance_score": 0.0,
+        "is_relevant": False,
+        "loop_count": 0,
+        "answer": "",
+        "final_answer": "",
+        "citations": [],
+        "confidence": 0.0,
+        "sources": [],
+    }
+    # phase: retrieve using V4 HybridRetriever
+    retriever = HybridRetriever()
+    ret = await retriever(retrieval_state)
+    chunks = ret.get("fused_results") or []
     context = "\n\n".join([c.get("content", "") for c in chunks])
     sources = []
     for c in chunks:
@@ -936,8 +988,17 @@ async def ingest_pdf_stream(
     request: Request, file: UploadFile = File(...), index: bool = False, kb_name: str | None = None
 ):
     async def event_gen():
-        yield "data: " + json.dumps({"status": "error", "message": "deprecated, use /api/ingest/upload_run/stream"}) + "\n\n"
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={"Connection": "close"})
+        yield (
+            "data: "
+            + json.dumps(
+                {"status": "error", "message": "deprecated, use /api/ingest/upload_run/stream"}
+            )
+            + "\n\n"
+        )
+
+    return StreamingResponse(
+        event_gen(), media_type="text/event-stream", headers={"Connection": "close"}
+    )
 
 
 def _md_table_to_csv(md: str) -> str:
@@ -988,9 +1049,6 @@ async def download_export(name: str):
     if not os.path.exists(path):
         return {"status": "error", "message": "not found"}
     return FileResponse(path, filename=name, media_type="text/csv")
-
-
-
 
 
 @router.get("/kb")

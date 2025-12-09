@@ -1,30 +1,51 @@
+"""
+Checkpoint persistence for LangGraph.
+Optional - returns None if PostgreSQL is not configured.
+"""
+
 import os
-from typing import AsyncIterator, Optional
-from langgraph.checkpoint.base import BaseCheckpointSaver, Checkpoint, CheckpointMetadata, CheckpointTuple
-from langgraph.checkpoint.postgres import AsyncPostgresSaver
-from psycopg_pool import AsyncConnectionPool
+from typing import Any
 
-_SAVER: Optional[AsyncPostgresSaver] = None
-_POOL: Optional[AsyncConnectionPool] = None
+_SAVER: Any = None
+_POOL: Any = None
+_PostgresSaver: Any = None
 
-def get_postgres_saver() -> AsyncPostgresSaver:
-    global _SAVER, _POOL
-    if _SAVER:
+# Try to import LangGraph postgres saver
+try:
+    from langgraph.checkpoint.postgres import PostgresSaver as _PostgresSaver
+except ImportError:
+    try:
+        from langgraph.checkpoint.postgres import AsyncPostgresSaver as _PostgresSaver
+    except ImportError:
+        _PostgresSaver = None
+
+
+def get_postgres_saver() -> Any | None:
+    """
+    Get or create a PostgreSQL checkpointer.
+    Returns None if not configured or unavailable.
+    """
+    global _SAVER
+
+    if _PostgresSaver is None:
+        return None
+
+    if _SAVER is not None:
         return _SAVER
-    
-    db_url = os.environ.get("DATABASE_URL", "postgresql://omnirag:omnirag_password@postgres:5432/omnirag")
-    
-    # LangGraph AsyncPostgresSaver needs a connection pool or conn string.
-    # Recommended pattern is to pass pool.
-    if _POOL is None:
-        _POOL = AsyncConnectionPool(conninfo=db_url, max_size=20)
-        
-    _SAVER = AsyncPostgresSaver(_POOL)
-    # Ensure table exists is async, usually needs to be awaited on app startup
-    # For now we return the saver, setup should be called explicitly
-    return _SAVER
+
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return None
+
+    try:
+        _SAVER = _PostgresSaver.from_conn_string(db_url)
+        return _SAVER
+    except Exception:
+        return None
+
 
 async def init_checkpointer():
+    """Initialize the checkpointer (setup tables)."""
     saver = get_postgres_saver()
-    await saver.setup()
-
+    if saver and hasattr(saver, "setup"):
+        await saver.setup()
