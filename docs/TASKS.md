@@ -112,13 +112,15 @@
 | 更新 server/api/ingest.py | ✅ | `server/api/ingest.py` |
 | 更新测试 fixtures | ✅ | `tests/conftest.py`, `tests/core/ingestion/test_chunker.py` |
 
-### P3.3 能力模块实现 🔄
+### P3.3 能力模块实现 ✅
 | 子任务 | 状态 | 文件 |
 |:-------|:----:|:-----|
-| 表格提取能力 (table_extractor) | ⬜ | `core/ingestion/nodes/table_extractor.py` |
-| 视频理解能力 (video_processor) | ⬜ | `core/ingestion/processors/video_processor.py` |
-| Excel 分析能力 (excel_analyzer) | ⬜ | `core/ingestion/nodes/excel_analyzer.py` |
-| 多模态检索能力 | ⬜ | `core/retrieval/multimodal/` |
+| 表格提取能力 (TableExtractor) | ✅ | `core/ingestion/nodes/table_extractor.py` |
+| 视频理解能力 (VideoProcessor) | ✅ | `core/ingestion/processors/video_processor.py` |
+| Excel 分析能力 (ExcelProcessor) | ✅ | `core/ingestion/processors/excel_processor.py` |
+| 版面分析能力 (LayoutAnalyzer) | ✅ | `core/vision/layout_analyzer.py` |
+| 漫画识别能力 (ComicProcessor) | ✅ | `core/ingestion/processors/comic_processor.py` |
+| 多模态检索能力 | ✅ | `core/retrieval/multimodal/` |
 
 ### P3.4 文档更新 ⬜
 | 子任务 | 状态 | 文件 |
@@ -144,32 +146,64 @@
 | 2025-12-08 | P2.3 解析扩展 | DOCX + PPTX 解析支持 (含表格) |
 | 2025-12-08 | P3.1 能力框架 | manifest.yaml + registry + loader + API routes |
 | 2025-12-08 | P3.2 状态集成 | IngestState/RetrievalState 集成 capability_loader |
+| 2025-12-09 | P3.3 能力模块 | 6个能力模块全部实现 (表格/视频/Excel/版面/漫画/多模态) |
 
 ---
 
-## 当前进度总结
+## 🎉 P3.3 能力模块实现完成！
 
 ### ✅ 已完成
 - **P0-P2**: Core 目录重构全部完成
-- **P3.1-P3.2**: 能力产品化基础设施和状态集成完成
+- **P3.1**: 能力框架基础设施 (manifest, registry, loader, API)
+- **P3.2**: 状态集成 (IngestState/RetrievalState + capability_loader)
+- **P3.3**: 能力模块实现 (6/6 完成)
 
 ### 🔄 进行中
-- **P3.3**: 能力模块的具体实现（表格提取、视频理解等）
 - **P3.4**: 相关文档更新
 
-### 📦 能力框架关键文件
+### 📦 新增能力模块
+
+| 模块 | 文件 | 功能 |
+|:-----|:-----|:-----|
+| **TableExtractor** | `core/ingestion/nodes/table_extractor.py` | 表格识别 (TableTransformer/PP-Structure/Camelot) |
+| **VideoProcessor** | `core/ingestion/processors/video_processor.py` | 视频关键帧+Whisper转写+VLM描述 |
+| **ExcelProcessor** | `core/ingestion/processors/excel_processor.py` | 多Sheet解析+公式理解+关系检测 |
+| **LayoutAnalyzer** | `core/vision/layout_analyzer.py` | 版面分析+阅读顺序检测 |
+| **ComicProcessor** | `core/ingestion/processors/comic_processor.py` | 漫画分格+气泡OCR+场景描述 |
+| **MultimodalRetriever** | `core/retrieval/multimodal/` | 文本+图像+表格联合检索 |
+
+### 📁 完整文件结构
+
 ```
-core/capabilities/
-├── __init__.py        # 模块导出
-├── manifest.yaml      # 17项能力定义 (配置Schema、UI展示、依赖)
-├── registry.py        # 能力注册表 (加载、查询、验证)
-└── loader.py          # 能力加载器 (动态加载、状态追踪)
+core/
+├── capabilities/
+│   ├── __init__.py        # 模块导出
+│   ├── manifest.yaml      # 17项能力定义
+│   ├── registry.py        # 能力注册表
+│   └── loader.py          # 能力加载器
+├── ingestion/
+│   ├── nodes/
+│   │   └── table_extractor.py  # 表格提取 ✨
+│   ├── processors/
+│   │   ├── __init__.py
+│   │   ├── comic_processor.py  # 漫画识别 ✨
+│   │   ├── excel_processor.py  # Excel分析 ✨
+│   │   └── video_processor.py  # 视频理解 ✨
+│   └── state_factory.py
+├── retrieval/
+│   └── multimodal/
+│       ├── __init__.py
+│       ├── embedder.py    # 多模态嵌入 ✨
+│       └── retriever.py   # 多模态检索 ✨
+├── vision/
+│   ├── __init__.py
+│   └── layout_analyzer.py # 版面分析 ✨
+└── state.py               # 添加 capability_loader 字段
 
 server/capability_routes.py  # 能力 API (12个端点)
-core/ingestion/state_factory.py  # 状态工厂函数
 ```
 
 ### 🎯 下一步
-1. 实现 `manifest.yaml` 中各能力对应的处理模块
+1. 完善文档 (P3.4)
 2. 前端开发能力配置 UI
-3. 完善文档
+3. 集成测试

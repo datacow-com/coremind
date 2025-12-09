@@ -1,9 +1,9 @@
 # Core 目录代码审查报告
 
-> **版本**: v1.0
-> **日期**: 2025-12-08
+> **版本**: v1.1
+> **日期**: 2025-12-09
 > **审查范围**: `/core/` 目录下所有 56 个 Python 文件
-> **对齐文档**: `docs/architecture.md`, `docs/tech/system-design.md`, `docs/api-spec.md`
+> **对齐文档**: `docs/architecture.md`, `docs/tech/system-design.md`, `docs/tech/large-pdf-processing.md`, `docs/tech/implementation_plan.md`
 
 ---
 
@@ -13,12 +13,21 @@
 
 | 评估维度 | 评分 | 说明 |
 |:---------|:----:|:-----|
-| **代码结构** | ⭐⭐⭐⭐ | 模块划分清晰，职责分离合理 |
-| **设计对齐** | ⭐⭐⭐⭐ | 已支持 Multi-Channel/Multi-KB 架构 |
-| **代码质量** | ⭐⭐⭐ | 大部分实现完整，少数需补充 |
-| **性能优化** | ⭐⭐⭐⭐ | Singleton/LRU 缓存已实现 |
-| **错误处理** | ⭐⭐⭐ | 有防御性编程，但可进一步增强 |
-| **可测试性** | ⭐⭐ | 缺少单元测试 |
+| **代码结构** | ⭐⭐⭐⭐ | 模块划分清晰，接口分层明确 |
+| **设计对齐** | ⭐⭐ | 多处未按 v2.0 设计落地（路由、分块、GPU 解析） |
+| **代码质量** | ⭐⭐ | 存在运行时错误与占位实现 |
+| **性能优化** | ⭐⭐⭐ | 有缓存/批处理，但缺少大文件流控与多模态索引检查 |
+| **错误处理** | ⭐⭐ | 条件边/回退路径不完整，易抛异常中断 |
+| **可测试性** | ⭐⭐ | 缺少关键路径单测与集成用例 |
+
+### 1.3 本轮新增关键问题（v1.1）
+
+1) **检索图条件路由缺失映射**：`core/graph.py` 的 `add_conditional_edges` 未提供路由表，运行即报错，意图路由不生效。
+2) **HybridRetriever 变量未定义**：`rrf_k` 读取 `kb_cfg`（未定义）导致 `NameError`，检索失败。
+3) **分块策略与元数据缺失**：`chunker` 未实现语义/标题/版面切分，缺少 `heading_level`、语言、表格优先等设计字段，影响加权与引用精度。
+4) **GPU 解析为占位/映射错误**：`paddle` 被映射到本地 YOLO，OCR/VLM/表格解析缺失，fallback 与限流未按设计实现。
+5) **多模态检索集合检查缺口**：调用未实现的 `collection_exists`，图像检索路径必然异常并被跳过。
+6) **策略字段不一致**：`StrategyConfig` 使用嵌套 `chunking`，与文档中的平铺字段（`chunking_mode` 等）不一致，节点读取易错。
 
 ### 1.2 文件统计
 
@@ -55,9 +64,9 @@
 
 **评估**: 符合 Multi-Channel 架构要求
 
-### 2.2 `core/graph.py` ✅
+### 2.2 `core/graph.py` ⚠️
 
-**状态**: V4 纯实现
+**状态**: V4 纯实现，但条件路由缺失映射
 
 **内容**:
 - `IntentRouter` - 意图路由 (关键词匹配)
@@ -66,8 +75,9 @@
 - `create_graph()` - 主 RAG 图
 
 **改进建议**:
-- `IntentRouter` 应升级为 LLM 驱动 (P2)
-- `HallucinationChecker` 需完整实现 (P2)
+- 为 `add_conditional_edges("router", ...)` 与 `("rerank", ...)` 补充路由映射，避免运行时异常 (P0)
+- `IntentRouter` 升级为 LLM 驱动，并提供默认意图 (P2)
+- `HallucinationChecker` 需完整实现并配置开关 (P1)
 
 ---
 
@@ -104,7 +114,7 @@
 - Prometheus 监控指标
 - DB 配置热加载
 
-### 3.3 `ingestion/` ✅
+### 3.3 `ingestion/` ⚠️
 
 | 文件 | 状态 | 说明 |
 |:-----|:----:|:-----|
@@ -112,8 +122,8 @@
 | `nodes/loader.py` | ✅ | Blob 存储读取 |
 | `nodes/router.py` | ✅ | CPU/GPU 路由决策 |
 | `nodes/parser/cpu_parser.py` | ✅ | PDF/HTML/MD/EML 解析 |
-| `nodes/parser/gpu_parser.py` | ✅ | VLM OCR (DeepSeek/Qwen/Volc/YOLO) |
-| `nodes/chunker.py` | ✅ | 3 种模式：fixed/table_first/layout_aware |
+| `nodes/parser/gpu_parser.py` | ⚠️ | Provider 多为占位，paddle 映射 YOLO，缺少 OCR/VLM 真实路径 |
+| `nodes/chunker.py` | ⚠️ | 仅 fixed/table_first/layout_aware，未实现语义/标题/页码权重 |
 | `nodes/embedder.py` | ✅ | 批量嵌入 + 进度跟踪 |
 | `nodes/indexer.py` | ✅ | Qdrant + ES 双写 |
 | `nodes/image_captioner.py` | ⚠️ | VLM 调用未完整实现 |
@@ -124,16 +134,18 @@
 - 错误日志记录
 
 **改进建议**:
-- `image_captioner.py` 需完整 VLM 调用 (P2)
+- 完整落地 GPU OCR/VLM/表格解析与速率限制，修正 provider 映射 (P0)
+- 补充语义/标题/版面分块，写入 `heading_level`/语言/置信度/表格优先元数据 (P0)
+- `image_captioner.py` 完整 VLM 调用 (P1)
 - 添加 `docx`/`pptx` 解析支持 (P2)
 
-### 3.4 `retrieval/` ✅
+### 3.4 `retrieval/` ⚠️
 
 | 文件 | 状态 | 说明 |
 |:-----|:----:|:-----|
 | `graph.py` | ✅ | QA 图定义 (循环纠正) |
 | `nodes/preprocessor.py` | ✅ | Intent + Query Rewrite (LLM) |
-| `nodes/retriever.py` | ✅ | 向量 + 关键词 + RRF 融合 |
+| `nodes/retriever.py` | ⚠️ | `kb_cfg` 未定义导致 RRF 失败；缺少通道过滤 |
 | `nodes/reranker.py` | ✅ | CrossEncoder + DB 配置 |
 | `nodes/generator.py` | ✅ | Citation 生成 (XML 标签) |
 
@@ -143,9 +155,9 @@
 - RRF 融合算法
 
 **设计对齐**:
-- ✅ 符合 `system-design.md` 检索管道设计
+- ❌ RRF 路径存在运行时错误，需修复后才符合设计
 
-### 3.5 `storage/` ✅
+### 3.5 `storage/` ⚠️
 
 | 文件 | 状态 | 说明 |
 |:-----|:----:|:-----|
@@ -155,7 +167,7 @@
 | `checkpoint.py` | ✅ | LangGraph 检查点 (可选) |
 | `kb_config.py` | ✅ | KB 配置管理 (DB + 文件回退) |
 | `kb_config_db.py` | ✅ | KB 配置 DB 操作 |
-| `index_router.py` | ⚠️ | 部分函数是 Stub |
+| `index_router.py` | ⚠️ | 部分函数是 Stub；`list_all_meta` 全量扫描缺少 channel/Kb 过滤与分页 |
 | `config_store.py` | ✅ | 存储配置 DB 读取 |
 
 **设计亮点**:
@@ -164,8 +176,8 @@
 - Singleton 模式避免重复连接
 
 **改进建议**:
-- `index_router.py` 的 `list_all_meta()` 需完整实现 (P1)
-- 添加 Channel 前缀隔离 (P0)
+- `index_router.py` 的 `list_all_meta()` 分页 + channel/kb 过滤，避免 OOM (P1)
+- Vector/Keyword store 已有 channel 支持，需审计调用链使用 (P1)
 
 ### 3.6 `reranker/` ✅
 
@@ -209,13 +221,13 @@
 - Prometheus 监控
 - 自动选择可用 Provider
 
-### 3.9 `vision/` ✅
+### 3.9 `vision/` ⚠️
 
 | 文件 | 状态 | 说明 |
 |:-----|:----:|:-----|
 | `layoutlm_parser.py` | ✅ | LRU 缓存模型加载 |
 | `yolo_detector.py` | ✅ | LRU 缓存模型加载 |
-| `layout_analyzer.py` | ✅ | OpenCV 版面分割 |
+| `layout_analyzer.py` | ⚠️ | 仅 OpenCV/PP-Structure；未与 GPU 解析/分块联动 |
 | `table.py` | ✅ | Markdown 表格提取 |
 
 **设计亮点**:
@@ -289,72 +301,100 @@
 
 ---
 
-## 5. 问题与风险
+## 5. 问题与风险（v1.1）
 
 ### 5.1 高优先级 (P0)
 
 | 问题 | 影响 | 建议 |
 |:-----|:-----|:-----|
-| Channel 数据隔离未实现 | 不同 Channel 数据可交叉访问 | Storage 层添加 channel 前缀 |
-| `index_router.py` 部分 Stub | 功能不完整 | 完整实现 `list_all_meta()` |
+| 检索图条件路由缺映射 | LangGraph 编译/运行直接失败，意图路由失效 | 为 `router`/`rerank` 补充映射，完善 loop 逻辑 |
+| HybridRetriever 变量未定义 | 检索抛 `NameError`，请求失败 | 去除 `kb_cfg` 引用，显式传入 KB 配置 |
+| GPU 解析占位/错误映射 | OCR/VLM 实际不可用，扫描件/表格路径失效 | 按设计接入真实 OCR/VLM/表格模型，修正 provider 路由与限流 |
+| 分块策略缺失 | 语义/标题/表格权重缺失，影响召回与引用定位 | 补齐语义/版面/表格优先分块，写入丰富元数据 |
+| 多模态集合检查缺口 | 图像/表格检索路径恒失败 | 在 vector_store 提供 `collection_exists` 或改用 `get_collection` 检查 |
 
 ### 5.2 中优先级 (P1)
 
 | 问题 | 影响 | 建议 |
 |:-----|:-----|:-----|
-| 无单元测试 | 回归风险 | 添加 pytest 测试套件 |
-| `image_captioner.py` 未完整 | VLM 功能受限 | 完成 VLM 调用实现 |
-| `pipeline/` 目录冗余 | 维护成本 | 合并/精简 |
+| 策略字段与文档不一致 | 配置注入/节点读取易错 | `StrategyConfig` 平铺字段，与 UI/文档对齐 |
+| `index_router.list_all_meta` 全量扫描 | 大库易 OOM/超时 | 分页 + channel/kb 过滤 |
+| 语义缓存/幻觉检测未落地 | QA 质量与成本控制缺失 | 按设计补充节点与开关 |
+| 大文件缺流式处理 | >100MB PDF 可能 OOM | Loader/Parser 支持 lazy/分页 |
 
 ### 5.3 低优先级 (P2)
 
 | 问题 | 影响 | 建议 |
 |:-----|:-----|:-----|
-| `IntentRouter` 仅关键词匹配 | 意图识别准确率低 | 升级为 LLM 驱动 |
-| `HallucinationChecker` 占位 | 幻觉检测不生效 | 完整实现 |
-| GraphRAG 无社区检测 | 知识图谱分析能力弱 | 添加 Louvain 算法 |
+| `HallucinationChecker` 占位 | 幻觉检测不生效 | 完整实现，暴露阈值 |
+| `IntentRouter` 仅关键词 | 意图识别准确率有限 | 升级 LLM 分类，回退关键词 |
+| GraphRAG 社区摘要缺失 | 图谱洞察有限 | Louvain + LLM 摘要 |
+
+---
+
+## 6. 与 `docs/TASKS.md` 对照的偏差
+
+> 重点核查虚假/静态实现、遗漏任务、低效不可投产代码。
+
+1) **P0/P1 运行时风险仍在**  
+   - 检索图条件路由无映射（router/rerank），LangGraph 会在编译/运行时报错。  
+   - HybridRetriever 仍引用未定义变量 `kb_cfg`，检索抛 `NameError`。  
+   - GPU 解析仍为占位，`paddle` 被映射到 YOLO，OCR/VLM/表格解析未落地，无法投产。  
+   - 多模态检索调用未实现的 `collection_exists`，图像/表格路径恒失败。  
+
+2) **分块与元数据未达成任务承诺**  
+   - Chunker 仅 fixed/table_first/layout_aware，缺语义/标题/表格优先切分；元数据无 `heading_level`、语言检测，页码/表格权重无法按设计使用。  
+
+3) **策略与设计/前端不一致**  
+   - `StrategyConfig` 仍使用嵌套 `chunking` 字段，未按文档的平铺字段（`chunking_mode` 等）对齐，前后端/节点读取易错。  
+
+4) **大文件与流式处理缺失**  
+   - Loader 仍全量读取，未实现 >100MB PDF 的 lazy/分页处理，存在 OOM 风险。  
+
+5) **智能化/质量控制节点未闭环**  
+   - IntentRouter 默认只用关键词，LLM 路径未配置；语义缓存未接入，幻觉检测为占位且无引用核查。  
+
+6) **多模态索引闭环缺失**  
+   - 图像/表格向量集合未确认存在性，缺索引/存储侧的实际落盘与过滤策略，多模态召回在生产不可用。  
+
+> 以上问题与 `docs/TASKS.md` 中的“已完成”状态不符，需重新排期并先行修复 P0/P1（路由/检索崩溃、GPU 解析、分块元数据、多模态检索可用性、大文件流控），再更新任务清单与状态。
 
 ---
 
 ## 6. 改进路线图
 
-### Phase 1: 安全与隔离 (P0)
+### Phase 1: 运行时修复 (P0)
 
 ```
-1. storage/vector_store.py - 添加 channel_id 前缀到 collection_name
-2. storage/keyword_store.py - 添加 channel_id 前缀到 index_name
-3. storage/index_router.py - 完整实现 list_all_meta()
+1. core/graph.py - 补全 router/rerank 条件映射；恢复 loop 控制
+2. retrieval/nodes/retriever.py - 移除 kb_cfg 未定义引用，传入 kb 配置
+3. retrieval/multimodal/retriever.py - 修正 collection 存在性检查
+4. ingestion/nodes/gpu_parser.py - 接入真实 OCR/VLM + fallback + 限流
+5. ingestion/nodes/chunker.py - 补齐语义/标题/表格优先分块与元数据
 ```
 
-### Phase 2: 功能补全 (P1)
+### Phase 2: 设计对齐 (P1)
 
 ```
-1. ingestion/nodes/image_captioner.py - 完整 VLM 调用
-2. 合并 pipeline/builder.py 到 ingestion/
-3. 添加 pytest 测试框架
+1. StrategyConfig 字段与文档/UI 对齐，移除嵌套 chunking
+2. 语义缓存 + 幻觉检测节点落地；Web 搜索回退链补全
+3. index_router.list_all_meta 支持分页+channel/kb 过滤
+4. Loader/Parser 支持大文件 lazy/分页处理
 ```
 
 ### Phase 3: 能力增强 (P2)
 
 ```
-1. graph.py - IntentRouter 升级为 LLM 驱动
-2. graph.py - HallucinationChecker 完整实现
-3. algorithms/graphrag_deep.py - 添加 Louvain 社区检测
+1. graph.py - IntentRouter LLM 化，增加 A/B 开关
+2. algorithms/graphrag_deep.py - Louvain 社区 + 摘要
+3. tests - 覆盖 Chunker/Retriever/Reranker 关键路径
 ```
 
 ---
 
 ## 7. 可信度声明
 
-基于本次审查，**core 目录代码可信**，具备以下特点：
-
-1. **架构清晰**: 模块职责分离，依赖关系明确
-2. **设计对齐**: 已实现 Multi-Channel/Multi-KB 核心架构
-3. **防御性编程**: 错误处理 + 降级机制
-4. **性能优化**: Singleton/LRU 缓存已实现
-5. **待改进**: Channel 隔离、部分 Stub 实现、测试覆盖
-
-**建议**: 在完成 P0 任务后，core 目录可作为生产环境的可靠基础。
+本次复审结论：核心结构良好，但存在直接影响运行的 P0 问题（路由映射缺失、检索报错、GPU 解析占位、分块与多模态缺口）。需先完成 Phase 1 修复后，再推进设计对齐与能力增强，方可用于生产。
 
 ---
 
