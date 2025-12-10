@@ -98,6 +98,8 @@ class MultimodalRetriever:
         """
         query = state.get("input_query", "")
         kb_names = state.get("kb_names", [])
+        # P0 Fix: Get channel_id from state for multi-tenant isolation
+        channel_id = state.get("channel_id", "default")
 
         if not query or not kb_names:
             return state
@@ -123,6 +125,7 @@ class MultimodalRetriever:
                         query_embedding=query_embedding,
                         query_modality=query_modality,
                         query_text=query,
+                        channel_id=channel_id,  # Pass channel_id
                     )
                     all_results.extend(results)
 
@@ -193,22 +196,23 @@ class MultimodalRetriever:
         query_embedding: list[float],
         query_modality: ModalityType,
         query_text: str = "",
+        channel_id: str = "default",  # Added for multi-tenant isolation
     ) -> list[MultimodalResult]:
-        """Search a single knowledge base."""
+        """Search a single knowledge base with channel isolation."""
         results = []
 
         # Search text chunks
-        text_results = await self._search_text_vectors(kb_name, query_embedding, query_text)
+        text_results = await self._search_text_vectors(kb_name, query_embedding, query_text, channel_id)
         results.extend(text_results)
 
         # Search image embeddings if enabled
         if self.enable_image_search:
-            image_results = await self._search_image_vectors(kb_name, query_embedding)
+            image_results = await self._search_image_vectors(kb_name, query_embedding, channel_id)
             results.extend(image_results)
 
         # Search table embeddings if enabled
         if self.enable_table_search:
-            table_results = await self._search_table_vectors(kb_name, query_embedding)
+            table_results = await self._search_table_vectors(kb_name, query_embedding, channel_id)
             results.extend(table_results)
 
         return results
@@ -218,14 +222,14 @@ class MultimodalRetriever:
         kb_name: str,
         query_embedding: list[float],
         query_text: str,
+        channel_id: str = "default",  # Added for multi-tenant isolation
     ) -> list[MultimodalResult]:
-        """Search text vectors in Qdrant."""
+        """Search text vectors in Qdrant with channel isolation."""
         try:
             from core.storage.channel_utils import channel_collection_name
             from core.storage.vector_store import QdrantVectorStore
 
-            # Get collection name
-            channel_id = "default"  # TODO: Get from context
+            # Get collection name with channel isolation
             collection = channel_collection_name(channel_id, kb_name)
 
             store = QdrantVectorStore()
@@ -271,13 +275,16 @@ class MultimodalRetriever:
         self,
         kb_name: str,
         query_embedding: list[float],
+        channel_id: str = "default",  # Added for multi-tenant isolation
     ) -> list[MultimodalResult]:
-        """Search image-specific collection."""
+        """Search image-specific collection with channel isolation."""
         try:
+            from core.storage.channel_utils import channel_collection_name
             from core.storage.vector_store import QdrantVectorStore
 
-            # Image collection (separate from text)
-            collection = f"kb_{kb_name}_images"
+            # Image collection with channel prefix
+            base_collection = channel_collection_name(channel_id, kb_name)
+            collection = f"{base_collection}_images"
 
             store = QdrantVectorStore()
 
@@ -317,15 +324,16 @@ class MultimodalRetriever:
         self,
         kb_name: str,
         query_embedding: list[float],
+        channel_id: str = "default",  # Added for multi-tenant isolation
     ) -> list[MultimodalResult]:
-        """Search table-specific collection or filter from main collection."""
+        """Search table-specific collection with channel isolation."""
         try:
             from qdrant_client.models import FieldCondition, Filter, MatchValue
 
             from core.storage.channel_utils import channel_collection_name
             from core.storage.vector_store import QdrantVectorStore
 
-            channel_id = "default"
+            # Use channel_id from parameter for multi-tenant isolation
             collection = channel_collection_name(channel_id, kb_name)
 
             store = QdrantVectorStore()

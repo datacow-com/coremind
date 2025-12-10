@@ -15,6 +15,7 @@ from server.config import settings
 
 class RaptorDeepState(TypedDict):
     kb_name: str
+    channel_id: str  # P0 Fix: Added for multi-tenant isolation
     prompt: str
     max_token: int
     threshold: float
@@ -27,10 +28,55 @@ class RaptorDeepState(TypedDict):
 
 
 async def collect_texts(state: RaptorDeepState) -> RaptorDeepState:
-    ms = list_all_meta()
-    state["chunks"] = [
-        str(m.get("content") or "") for m in ms if str(m.get("content") or "").strip()
-    ]
+    """
+    P0 Fix: Collect texts with kb_name and channel_id filtering.
+    Uses pagination to avoid OOM on large datasets.
+    """
+    from core.storage.index_router import list_page_meta
+    
+    kb_name = state.get("kb_name")
+    channel_id = state.get("channel_id", "default")
+    
+    # Pagination to avoid OOM
+    all_chunks: list[str] = []
+    offset = 0
+    page_size = 1000  # Process in batches
+    max_chunks = 50000  # Safety limit
+    
+    while len(all_chunks) < max_chunks:
+        try:
+            # Get page with filtering
+            page = list_page_meta(
+                kb_name=kb_name,
+                channel_id=channel_id,
+                offset=offset,
+                limit=page_size
+            )
+        except TypeError:
+            # Fallback if list_page_meta doesn't support all params yet
+            ms = list_all_meta()
+            # Manual filtering
+            page = [
+                m for m in ms 
+                if (not kb_name or m.get("kb_name") == kb_name) and
+                   (not channel_id or channel_id == "default" or m.get("channel_id") == channel_id)
+            ][offset:offset + page_size]
+        
+        if not page:
+            break
+            
+        for m in page:
+            content = str(m.get("content") or "").strip()
+            if content:
+                all_chunks.append(content)
+        
+        offset += page_size
+        
+        # Safety check
+        if len(page) < page_size:
+            break
+    
+    state["chunks"] = all_chunks
     return state
 
 

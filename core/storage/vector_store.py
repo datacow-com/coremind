@@ -240,6 +240,34 @@ class QdrantVectorStore:
 
     # --- New Algorithm Support Methods ---
 
+    async def collection_exists(self, collection_name: str) -> bool:
+        """Check if a collection exists in Qdrant."""
+
+        def _check():
+            try:
+                self.client.get_collection(collection_name)
+                return True
+            except Exception:
+                return False
+
+        return await asyncio.to_thread(_check)
+
+    async def get_collection_info(self, collection_name: str) -> dict[str, Any] | None:
+        """Get collection info if exists, None otherwise."""
+
+        def _get():
+            try:
+                info = self.client.get_collection(collection_name)
+                return {
+                    "name": collection_name,
+                    "vectors_count": info.vectors_count,
+                    "points_count": info.points_count,
+                }
+            except Exception:
+                return None
+
+        return await asyncio.to_thread(_get)
+
     async def scroll(
         self, collection_name: str, limit: int = 100, offset_id: str | None = None
     ) -> tuple[list[dict[str, Any]], str | None]:

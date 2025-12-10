@@ -200,25 +200,43 @@ class MultimodalEmbedder:
                 embedding.extend([0.0] * (self.dimension - len(embedding)))
             return embedding[: self.dimension]
 
+    # Class-level model cache to avoid reloading 2GB+ models
+    _clip_model_cache: dict[str, tuple] = {}
+    _clip_cache_lock = None
+
     async def _embed_image_clip_local(self, image_data: bytes) -> list[float] | None:
-        """Embed image using local CLIP model."""
+        """Embed image using local CLIP model with caching."""
         try:
             import torch
             from PIL import Image
             from transformers import CLIPModel, CLIPProcessor
 
-            # Load model (will be cached)
-            model = CLIPModel.from_pretrained(self.image_model)
-            processor = CLIPProcessor.from_pretrained(self.image_model)
+            # P0 Fix #16: Use cached model instead of reloading each time
+            cache_key = self.image_model
+            if cache_key not in MultimodalEmbedder._clip_model_cache:
+                logger.info(f"Loading CLIP model: {self.image_model}")
+                model = CLIPModel.from_pretrained(self.image_model)
+                processor = CLIPProcessor.from_pretrained(self.image_model)
+                # Move to GPU if available
+                if torch.cuda.is_available():
+                    model = model.cuda()
+                model.eval()
+                MultimodalEmbedder._clip_model_cache[cache_key] = (model, processor)
+            
+            model, processor = MultimodalEmbedder._clip_model_cache[cache_key]
 
             # Process image
             image = Image.open(io.BytesIO(image_data)).convert("RGB")
             inputs = processor(images=image, return_tensors="pt")
+            
+            # Move inputs to same device as model
+            if next(model.parameters()).is_cuda:
+                inputs = {k: v.cuda() for k, v in inputs.items()}
 
             with torch.no_grad():
                 features = model.get_image_features(**inputs)
 
-            embedding = features[0].tolist()
+            embedding = features[0].cpu().tolist()
 
             # Project to target dimension if needed
             if len(embedding) != self.dimension:

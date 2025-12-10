@@ -16,6 +16,7 @@ from core.retrieval.nodes.generator import CitationGenerator
 from core.retrieval.nodes.preprocessor import QueryPreProcessor
 from core.retrieval.nodes.reranker import CrossEncoderReranker
 from core.retrieval.nodes.retriever import HybridRetriever
+from core.retrieval.nodes.semantic_cache import get_semantic_cache  # P1 Fix #14
 from core.state import RetrievalState
 
 # Web Search
@@ -182,6 +183,8 @@ class HallucinationChecker:
 
     Compares generated answer claims against source documents
     to identify unsupported assertions.
+    
+    P1 Fix: Now affects confidence score and can trigger retry/degradation.
     """
 
     def __init__(self):
@@ -194,21 +197,37 @@ class HallucinationChecker:
 
         # Skip if no answer or sources
         if not answer or not sources:
+            state["hallucination_detected"] = False
             return state
 
         # Skip if hallucination check is disabled
         if not cfg.get("enable_hallucination_check", False):
+            state["hallucination_detected"] = False
             return state
 
         try:
             result = await self._check_hallucination(answer, sources, cfg)
             state["hallucination_check"] = result
+            hallucination_score = result.get("score", 0)
+            threshold = cfg.get("hallucination_threshold", 0.5)
 
-            # If high hallucination detected, add warning
-            if result.get("score", 0) > cfg.get("hallucination_threshold", 0.5):
-                state["final_answer"] = f"⚠️ 警告：回答可能包含不确定信息\n\n{answer}"
+            # P1 Fix: If high hallucination detected, affect confidence and mark for degradation
+            if hallucination_score > threshold:
+                # 1. Lower confidence score
+                original_confidence = state.get("confidence", 1.0)
+                state["confidence"] = original_confidence * (1.0 - hallucination_score * 0.5)
+                
+                # 2. Mark for potential degradation
+                state["hallucination_detected"] = True
+                state["hallucination_check"]["needs_verification"] = True
+                
+                # 3. Add warning to answer
+                state["final_answer"] = f"⚠️ 警告：回答可能包含不确定信息 (置信度: {state['confidence']:.0%})\n\n{answer}"
+            else:
+                state["hallucination_detected"] = False
+                
         except Exception:
-            pass
+            state["hallucination_detected"] = False
 
         return state
 
@@ -276,25 +295,50 @@ def create_graph():
 
     # Register nodes
     graph.add_node("router", router)
+    graph.add_node("semantic_cache", get_semantic_cache())  # P1 Fix #14
     graph.add_node("preprocess", preprocessor)
     graph.add_node("retrieve", retriever)
     graph.add_node("rerank", reranker)
     graph.add_node("generate", generator)
     graph.add_node("web_search", web_search)
     graph.add_node("hallucination", hallucination_checker)
+    graph.add_node("cache_result", get_semantic_cache().cache_result)  # P1 Fix #14
 
     # Entry point
     graph.set_entry_point("router")
 
-    # Routing logic
+    # P1 Fix: Routing logic with explicit mappings
     def intent_router(state: RetrievalState) -> str:
         intent = state.get("intent", {})
         intent_type = intent.get("type", "qa") if isinstance(intent, dict) else "qa"
         if intent_type == "web_search":
             return "web_search"
-        return "preprocess"
+        return "semantic_cache"  # P1 Fix #14: Check cache first
 
-    graph.add_conditional_edges("router", intent_router)
+    # P1 Fix: Add explicit mapping for LangGraph compatibility
+    graph.add_conditional_edges(
+        "router", 
+        intent_router,
+        {
+            "web_search": "web_search",
+            "semantic_cache": "semantic_cache"  # P1 Fix #14
+        }
+    )
+    
+    # P1 Fix #14: After cache check, either skip to generate or continue retrieval
+    def cache_router(state: RetrievalState) -> str:
+        if state.get("cache_hit", False):
+            return "generate"  # Skip retrieval, use cached answer
+        return "preprocess"  # Cache miss, continue normal flow
+    
+    graph.add_conditional_edges(
+        "semantic_cache",
+        cache_router,
+        {
+            "generate": "generate",
+            "preprocess": "preprocess"
+        }
+    )
 
     # Web search path
     graph.add_edge("web_search", "generate")
@@ -311,9 +355,38 @@ def create_graph():
                 return "web_search"
         return "generate"
 
-    graph.add_conditional_edges("rerank", relevance_router)
+    # P1 Fix: Add explicit mapping
+    graph.add_conditional_edges(
+        "rerank", 
+        relevance_router,
+        {
+            "web_search": "web_search",
+            "generate": "generate"
+        }
+    )
+    
     graph.add_edge("generate", "hallucination")
-    graph.add_edge("hallucination", END)
+    
+    # P1 Fix: Hallucination check can trigger retry for high-risk answers
+    def hallucination_router(state: RetrievalState) -> str:
+        if state.get("hallucination_detected", False):
+            loop_count = state.get("hallucination_retry_count", 0)
+            if loop_count < 1:
+                state["hallucination_retry_count"] = loop_count + 1
+                return "retry_web_search"
+        return "cache_result"  # P1 Fix #14: Cache result before ending
+    
+    graph.add_conditional_edges(
+        "hallucination",
+        hallucination_router,
+        {
+            "retry_web_search": "web_search",
+            "cache_result": "cache_result"  # P1 Fix #14
+        }
+    )
+    
+    # P1 Fix #14: After caching, go to END
+    graph.add_edge("cache_result", END)
 
     # Checkpointer setup
     checkpointer = None

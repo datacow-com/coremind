@@ -24,15 +24,22 @@ class AlgorithmConfig(BaseModel):
 
 
 class StrategyConfig(BaseModel):
-    """策略配置 - 从UI注入"""
+    """
+    策略配置 - 从UI注入
+    
+    P2 Fix: Supports both nested (chunking.mode) and flat (chunking_mode) access patterns.
+    """
 
     # OCR/VLM策略
     ocr_provider: Literal["deepseek", "qwen-vl", "volc_engine", "paddle", "auto"] = "auto"
     ocr_fallback_chain: list[str] = Field(default_factory=lambda: ["qwen-vl", "volc_engine"])
     ocr_concurrency: int = 5
     force_ocr: bool = False
+    
+    # P1 Fix: Add scanned PDF detection option
+    detect_complex_layout: bool = False
 
-    # 分块策略
+    # 分块策略 (nested)
     chunking: ChunkingStrategy = Field(default_factory=ChunkingStrategy)
 
     # Embedding策略
@@ -45,6 +52,9 @@ class StrategyConfig(BaseModel):
     keyword_backend: Literal["elasticsearch", "disabled", "local"] = "elasticsearch"
     enable_quantization: bool = True  # Binary quantization for 100TB
     enable_hot_cold_tier: bool = False
+    
+    # 多模态索引
+    enable_multimodal_index: bool = True
 
     # 算法增强 (New)
     algorithms: AlgorithmConfig = Field(default_factory=AlgorithmConfig)
@@ -54,6 +64,35 @@ class StrategyConfig(BaseModel):
     min_quality_score: float = 0.5
     enable_dedup: bool = True
     enable_pii_filter: bool = False
+    
+    # 语义缓存
+    enable_semantic_cache: bool = False
+    cache_ttl: int = 3600
+    
+    # 幻觉检测
+    enable_hallucination_check: bool = False
+    hallucination_threshold: float = 0.5
+
+    # P2 Fix: Compatibility properties for flat field access
+    @property
+    def chunking_mode(self) -> str:
+        """Flat access: chunking_mode -> chunking.mode"""
+        return self.chunking.mode
+
+    @property
+    def chunk_size(self) -> int:
+        """Flat access: chunk_size -> chunking.chunk_size"""
+        return self.chunking.chunk_size
+
+    @property
+    def chunk_overlap(self) -> int:
+        """Flat access: chunk_overlap -> chunking.chunk_overlap"""
+        return self.chunking.chunk_overlap
+    
+    @property
+    def preserve_tables(self) -> bool:
+        """Flat access: preserve_tables -> chunking.preserve_tables"""
+        return self.chunking.preserve_tables
 
 
 # --- TypedDicts for LangGraph State ---

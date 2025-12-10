@@ -106,9 +106,9 @@ class HybridRetriever:
                     vector_results.extend(v_res)
                     keyword_results.extend(k_res)
 
-            # RRF Fusion
+            # RRF Fusion - use cfg directly (kb_cfg is only available inside _search_kb)
             fused = self._rrf_fusion(
-                vector_results, keyword_results, k=int(cfg.get("rrf_k", kb_cfg.get("rrf_k", 60)))
+                vector_results, keyword_results, k=int(cfg.get("rrf_k", 60))
             )
 
             # Convert to State format

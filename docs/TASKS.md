@@ -207,3 +207,146 @@ server/capability_routes.py  # 能力 API (12个端点)
 1. 完善文档 (P3.4)
 2. 前端开发能力配置 UI
 3. 集成测试
+
+---
+
+## P4 任务 (Core Review Report v1.1 修复)
+
+> **来源**: `docs/core-review-report.md` v1.1 审查
+> **日期**: 2025-12-09
+
+### P4.0 P0 级修复 (运行崩溃) ✅
+| 子任务 | 状态 | 文件 |
+|:-------|:----:|:-----|
+| HybridRetriever kb_cfg 未定义修复 | ✅ | `core/retrieval/nodes/retriever.py` |
+| VectorStore collection_exists 方法添加 | ✅ | `core/storage/vector_store.py` |
+
+### P4.1 P1 级修复 (设计对齐) ✅
+| 子任务 | 状态 | 文件 |
+|:-------|:----:|:-----|
+| QwenVLProvider 真实 API 实现 | ✅ | `core/ingestion/nodes/parser/gpu_parser.py` |
+| VolcEngineOCR 真实 API 实现 | ✅ | `core/ingestion/nodes/parser/gpu_parser.py` |
+| SmartChunker semantic 模式 | ✅ | `core/ingestion/nodes/chunker.py` |
+| SmartChunker heading_based 模式 | ✅ | `core/ingestion/nodes/chunker.py` |
+| 分块元数据增强 (language, heading_level, weights) | ✅ | `core/ingestion/nodes/chunker.py` |
+| LoaderNode 大文件流式处理 | ✅ | `core/ingestion/nodes/loader.py` |
+| DualIndexer 多模态索引 (images, tables) | ✅ | `core/ingestion/nodes/indexer.py` |
+
+### P4.2 P2 级修复 (增强) ✅
+| 子任务 | 状态 | 文件 |
+|:-------|:----:|:-----|
+| 语义缓存节点 | ✅ | `core/retrieval/nodes/semantic_cache.py` |
+| API 限流机制 (RateLimiter) | ✅ | `core/ingestion/nodes/parser/gpu_parser.py` |
+
+---
+
+## 完成记录 (续)
+
+| 日期 | 任务 | 备注 |
+|:-----|:-----|:-----|
+| 2025-12-09 | P4.0 P0 级修复 | kb_cfg 变量修复 + collection_exists 方法 |
+| 2025-12-09 | P4.1 P1 级修复 | GPU OCR 实现 + 分块策略 + 大文件 + 多模态索引 |
+| 2025-12-09 | P4.2 P2 级修复 | 语义缓存节点 + API 限流机制 |
+
+
+---
+
+## 🎉 Core Review Report v1.1 修复完成！
+
+### 修复摘要
+
+| 级别 | 问题数 | 已修复 | 剩余 |
+|:-----|:------:|:------:|:----:|
+| P0 (运行崩溃) | 2 | 2 | 0 |
+| P1 (设计对齐) | 7 | 7 | 0 |
+| P2 (增强) | 2 | 2 | 0 |
+| **总计** | **11** | **11** | **0** |
+
+### 修改文件清单 (v1.1)
+
+| 文件 | 修改内容 |
+|:-----|:---------|
+| `core/retrieval/nodes/retriever.py` | 修复 `kb_cfg` 未定义问题 |
+| `core/storage/vector_store.py` | 添加 `collection_exists`/`get_collection_info` 方法 |
+| `core/ingestion/nodes/parser/gpu_parser.py` | 真实 API 实现 + RateLimiter 限流 |
+| `core/ingestion/nodes/chunker.py` | 添加 semantic/heading_based 模式 + 元数据增强 |
+| `core/ingestion/nodes/loader.py` | 大文件流式处理 + 归档提取 |
+| `core/ingestion/nodes/indexer.py` | 多模态索引 (images/tables) |
+| `core/retrieval/nodes/semantic_cache.py` | 新建语义缓存节点 |
+
+---
+
+## P5 任务 (Core Review 2025-12-10 修复)
+
+> **来源**: `docs/core-review-2025-12-10.md`
+> **日期**: 2025-12-10
+
+### P5.0 P0 级修复 (运行崩溃/越权) ✅
+| 子任务 | 状态 | 文件 |
+|:-------|:----:|:-----|
+| 多模态检索 channel 隔离 | ✅ | `core/retrieval/multimodal/retriever.py` |
+| 多模态集合名 channel 前缀 | ✅ | `core/retrieval/multimodal/retriever.py` |
+| RAPTOR 分页 + channel/kb 过滤 | ✅ | `core/algorithms/raptor_deep.py` |
+| GraphRAG 分页 + channel/kb 过滤 | ✅ | `core/algorithms/graphrag_deep.py` |
+
+### P5.1 P1 级修复 (设计对齐) ✅
+| 子任务 | 状态 | 文件 |
+|:-------|:----:|:-----|
+| Router 扫描 PDF 检测 | ✅ | `core/ingestion/nodes/router.py` |
+| PaddleOCRProvider 真实实现 | ✅ | `core/ingestion/nodes/parser/gpu_parser.py` |
+| LocalYoloProvider OCR 回填 | ✅ | `core/ingestion/nodes/parser/gpu_parser.py` |
+| QualityChecker 节点 | ✅ | `core/ingestion/nodes/quality_checker.py` |
+| ErrorHandler 节点 | ✅ | `core/ingestion/nodes/error_handler.py` |
+| Finalizer 节点 | ✅ | `core/ingestion/nodes/finalizer.py` |
+| 摄取图 QC/Retry/Finalizer 集成 | ✅ | `core/ingestion/graph.py` |
+| 检索图显式路由映射 | ✅ | `core/graph.py` |
+| HallucinationChecker 置信度影响 | ✅ | `core/graph.py` |
+
+### P5.2 P2 级修复 (增强) ✅
+| 子任务 | 状态 | 文件 |
+|:-------|:----:|:-----|
+| OTel 追踪工具模块 | ✅ | `core/utils/tracing.py` |
+| StrategyConfig 兼容属性 | ✅ | `core/state.py` |
+
+---
+
+## 完成记录 (续)
+
+| 日期 | 任务 | 备注 |
+|:-----|:-----|:-----|
+| 2025-12-09 | P4.0 P0 级修复 | kb_cfg 变量修复 + collection_exists 方法 |
+| 2025-12-09 | P4.1 P1 级修复 | GPU OCR 实现 + 分块策略 + 大文件 + 多模态索引 |
+| 2025-12-09 | P4.2 P2 级修复 | 语义缓存节点 + API 限流机制 |
+| 2025-12-10 | P5.0 P0 级修复 | 多模态 channel 隔离 + RAPTOR/GraphRAG 分页过滤 |
+| 2025-12-10 | P5.1 P1 级修复 | 扫描检测 + PaddleOCR + QC/Retry/Finalizer + 路由映射 |
+| 2025-12-10 | P5.2 P2 级修复 | OTel 追踪 + StrategyConfig 兼容属性 |
+
+---
+
+## 🎉 Core Review 2025-12-10 修复完成！
+
+### 修复摘要 (v2.0)
+
+| 级别 | 问题数 | 已修复 | 剩余 |
+|:-----|:------:|:------:|:----:|
+| P0 (运行崩溃/越权) | 4 | 4 | 0 |
+| P1 (设计对齐) | 9 | 9 | 0 |
+| P2 (增强) | 2 | 2 | 0 |
+| **总计** | **15** | **15** | **0** |
+
+### 新增/修改文件清单 (2025-12-10)
+
+| 文件 | 修改内容 |
+|:-----|:---------|
+| `core/retrieval/multimodal/retriever.py` | 移除 channel 硬编码，使用 state.channel_id |
+| `core/algorithms/raptor_deep.py` | 添加 channel_id + 分页 + kb 过滤 |
+| `core/algorithms/graphrag_deep.py` | 添加 channel_id + 分页 + kb 过滤 |
+| `core/ingestion/nodes/router.py` | 重写：添加扫描 PDF 检测 + 复杂布局检测 |
+| `core/ingestion/nodes/parser/gpu_parser.py` | 添加 PaddleOCRProvider + YOLO OCR 回填 |
+| `core/ingestion/nodes/quality_checker.py` | 新建：质量评分 + 去重 + PII 过滤 |
+| `core/ingestion/nodes/error_handler.py` | 新建：错误分类 + 重试逻辑 |
+| `core/ingestion/nodes/finalizer.py` | 新建：状态更新 + 临时文件清理 |
+| `core/ingestion/graph.py` | 重写：集成 QC/ErrorHandler/Finalizer |
+| `core/graph.py` | 添加显式路由映射 + 幻觉检测降级 |
+| `core/utils/tracing.py` | 新建：OTel 追踪装饰器和工具 |
+| `core/state.py` | 添加兼容属性 + 新配置字段 |
