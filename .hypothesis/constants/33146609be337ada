@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/vision/layoutlm_parser.py
+# hypothesis_version: 6.148.7
+
+['RGB', 'id2label', 'pt']

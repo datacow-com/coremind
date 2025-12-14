@@ -107,7 +107,12 @@ class QwenVLProvider:
             raise RuntimeError(f"QwenVL processing failed: {str(e)}")
 
 class VolcEngineOCR:
-    """Uses VolcEngine (ByteDance) OCR API for document text extraction"""
+    """
+    Uses VolcEngine (ByteDance) OCR API for document text extraction.
+    
+    P0 Fix: Now uses official volcengine-python-sdk for proper API signing.
+    Install with: pip install volcengine-python-sdk
+    """
 
     VOLC_OCR_URL = "https://visual.volcengineapi.com"
     OCR_ACTION = "OCRNormal"
@@ -116,29 +121,23 @@ class VolcEngineOCR:
         self.ak = os.environ.get("VOLC_ACCESS_KEY")
         self.sk = os.environ.get("VOLC_SECRET_KEY")
         self.region = os.environ.get("VOLC_REGION", "cn-north-1")
+        self._visual_service = None
 
-    def _sign_request(self, method: str, params: dict, body: bytes) -> dict:
-        """Generate VolcEngine API signature (simplified - use volcengine SDK in production)"""
-        import hashlib
-        import hmac
-        import datetime
-
-        # This is a simplified version - in production use volcengine-python-sdk
-        timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-        date = timestamp[:8]
-
-        # Create canonical request hash
-        headers = {
-            "X-Date": timestamp,
-            "X-Content-Sha256": hashlib.sha256(body).hexdigest(),
-            "Host": "visual.volcengineapi.com",
-        }
-
-        # In production, implement full AWS4-HMAC-SHA256 signing
-        # For now, return basic headers that will work with API key auth
-        headers["Authorization"] = f"HMAC-SHA256 Credential={self.ak}/{date}/{self.region}/cv/request"
-
-        return headers
+    def _get_visual_service(self):
+        """Get or create VolcEngine Visual Service with proper SDK."""
+        if self._visual_service is not None:
+            return self._visual_service
+            
+        try:
+            from volcengine.visual.VisualService import VisualService
+            
+            service = VisualService()
+            service.set_ak(self.ak)
+            service.set_sk(self.sk)
+            self._visual_service = service
+            return service
+        except ImportError:
+            return None
 
     async def process(self, content: bytes) -> Dict[str, Any]:
         import base64
@@ -149,15 +148,42 @@ class VolcEngineOCR:
 
         b64_img = base64.b64encode(content).decode("utf-8")
 
-        payload = {
-            "image_base64": b64_img,
-        }
+        # P0 Fix: Try to use official SDK first
+        visual_service = self._get_visual_service()
+        if visual_service:
+            try:
+                # Use official SDK for proper signing
+                resp = await asyncio.to_thread(
+                    visual_service.ocr_normal,
+                    {"image_base64": b64_img}
+                )
+                
+                # Parse SDK response
+                if resp and resp.get("code") == 10000:
+                    data = resp.get("data", {})
+                    lines = data.get("line_texts", [])
+                    full_text = "\n".join(lines) if lines else data.get("text", "")
+                    
+                    return {
+                        "blocks": [{
+                            "type": "text",
+                            "content": full_text,
+                            "page": 1,
+                            "ocr_confidence": data.get("confidence", 0.85),
+                        }] if full_text else [],
+                        "images": [],
+                    }
+                else:
+                    raise RuntimeError(f"VolcEngine SDK error: {resp}")
+                    
+            except Exception as e:
+                # Fall through to HTTP fallback
+                pass
 
-        body = str(payload).encode("utf-8")
+        # Fallback: HTTP request (may fail without proper signing)
+        payload = {"image_base64": b64_img}
 
         try:
-            # Use volcengine SDK for proper signing in production
-            # Here we attempt a simplified API call
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     f"{self.VOLC_OCR_URL}/?Action={self.OCR_ACTION}&Version=2020-08-26",

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/parser/cpu_parser.py
+# hypothesis_version: 6.148.7
+
+['\n# ', '\n- ', ' |', ' | ', '---', 'Heading', 'bbox', 'blocks', 'col_count', 'content', 'cpu_parser', 'doc', 'docx', 'eml', 'error', 'error_log', 'file_type', 'h1', 'h2', 'h3', 'header', 'htm', 'html', 'ignore', 'lazy_load', 'li', 'local_temp_path', 'markdown', 'md', 'p', 'page', 'parsed_blocks', 'pdf', 'ppt', 'pptx', 'raw_content', 'rb', 'row_count', 'script', 'stage', 'style', 'table', 'table_index', 'text', 'text/plain', 'txt', 'type', 'utf-8', '| ']

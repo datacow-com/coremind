@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/vision/yolo_detector.py
+# hypothesis_version: 6.148.7
+
+[0.25, 0.4, 2000, 'boxes']

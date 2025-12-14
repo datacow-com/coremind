@@ -106,9 +106,11 @@ class HybridRetriever:
                     vector_results.extend(v_res)
                     keyword_results.extend(k_res)
 
-            # RRF Fusion - use cfg directly (kb_cfg is only available inside _search_kb)
+            # P0 Fix: RRF Fusion with channel_id validation for multi-tenant isolation
             fused = self._rrf_fusion(
-                vector_results, keyword_results, k=int(cfg.get("rrf_k", 60))
+                vector_results, keyword_results, 
+                k=int(cfg.get("rrf_k", 60)),
+                channel_id=channel_id
             )
 
             # Convert to State format
@@ -133,20 +135,42 @@ class HybridRetriever:
         }
 
     def _rrf_fusion(
-        self, vec_res: list[dict], kw_res: list[dict], k: int = 60
+        self, vec_res: list[dict], kw_res: list[dict], k: int = 60,
+        channel_id: str | None = None
     ) -> list[RetrievedChunk]:
+        """
+        RRF (Reciprocal Rank Fusion) for combining vector and keyword results.
+        
+        P0 Fix: Added channel_id validation to ensure multi-tenant isolation.
+        Results from wrong channels are filtered out before fusion.
+        """
         scores: dict[str, float] = {}
         docs: dict[str, dict] = {}
 
+        # P0 Fix: Filter results by channel_id before fusion
+        if channel_id:
+            vec_res = [
+                r for r in vec_res 
+                if r.get("metadata", {}).get("channel_id") == channel_id
+                or r.get("channel_id") == channel_id
+                or not r.get("metadata", {}).get("channel_id")  # Allow legacy data without channel
+            ]
+            kw_res = [
+                r for r in kw_res 
+                if r.get("metadata", {}).get("channel_id") == channel_id
+                or r.get("channel_id") == channel_id
+                or not r.get("metadata", {}).get("channel_id")
+            ]
+
         # Rank Vector
-        vec_res.sort(key=lambda x: x["score"], reverse=True)
+        vec_res.sort(key=lambda x: x.get("score", 0), reverse=True)
         for rank, item in enumerate(vec_res):
             doc_id = str(item["id"])
             scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
             docs[doc_id] = item
 
         # Rank Keyword
-        kw_res.sort(key=lambda x: x["score"], reverse=True)
+        kw_res.sort(key=lambda x: x.get("score", 0), reverse=True)
         for rank, item in enumerate(kw_res):
             doc_id = str(item["id"])
             scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)

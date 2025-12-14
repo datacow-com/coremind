@@ -18,6 +18,8 @@ from core.utils.monitor import ingest_duration, ingest_requests
 LARGE_FILE_THRESHOLD = 100 * 1024 * 1024  # 100MB
 # Maximum file size to load entirely into memory (500MB)
 MAX_MEMORY_FILE_SIZE = 500 * 1024 * 1024  # 500MB
+# Unknown size sentinel
+UNKNOWN_SIZE = -1
 
 
 class LoaderNode:
@@ -51,7 +53,18 @@ class LoaderNode:
                     return await self._handle_archive(state, blob_store, file_path, file_type)
 
                 # Large file handling
-                if file_size > MAX_MEMORY_FILE_SIZE:
+                if file_size == UNKNOWN_SIZE:
+                    # Unknown size: safer to require lazy handling
+                    state["raw_content"] = None
+                    state["lazy_load"] = True
+                    state["lazy_load_path"] = file_path
+                    state["file_size"] = UNKNOWN_SIZE
+                    state["error_log"].append({
+                        "stage": "loader",
+                        "warning": "Unknown file size, using streaming/lazy mode"
+                    })
+
+                elif file_size > MAX_MEMORY_FILE_SIZE:
                     # Too large to process - mark as streaming required
                     state["raw_content"] = None
                     state["lazy_load"] = True
@@ -88,15 +101,15 @@ class LoaderNode:
                 return state
 
     async def _get_file_size(self, blob_store: Any, file_path: str) -> int:
-        """Get file size from blob store."""
+        """Get file size from blob store. Returns UNKNOWN_SIZE on failure."""
         try:
             # Try to use head/stat method if available
             if hasattr(blob_store, "head"):
                 info = await blob_store.head(file_path)
-                return info.get("size", 0)
+                return info.get("size", UNKNOWN_SIZE)
             elif hasattr(blob_store, "stat"):
                 info = await blob_store.stat(file_path)
-                return info.get("size", 0)
+                return info.get("size", UNKNOWN_SIZE)
             elif hasattr(blob_store, "get_size"):
                 return await blob_store.get_size(file_path)
 
@@ -104,12 +117,11 @@ class LoaderNode:
             if os.path.exists(file_path):
                 return os.path.getsize(file_path)
 
-            # Last resort: download and check (expensive)
-            # For MVP, assume small file if we can't determine size
-            return 0
+            # Last resort: unknown size
+            return UNKNOWN_SIZE
 
         except Exception:
-            return 0
+            return UNKNOWN_SIZE
 
     async def _download_to_temp(self, blob_store: Any, file_path: str) -> str:
         """Download large file to temporary location for streaming."""
@@ -130,7 +142,17 @@ class LoaderNode:
                     async for chunk in blob_store.stream(file_path):
                         await f.write(chunk)
             else:
-                # Fallback: full download (may be memory-intensive)
+                # P1 Fix: Reject large files if blob store doesn't support streaming
+                # This prevents OOM from loading entire large files into memory
+                file_size = await self._get_file_size(blob_store, file_path)
+                if file_size > LARGE_FILE_THRESHOLD:
+                    raise RuntimeError(
+                        f"Blob store does not support streaming downloads. "
+                        f"Cannot safely process file larger than {LARGE_FILE_THRESHOLD / 1024 / 1024:.0f}MB. "
+                        f"File size: {file_size / 1024 / 1024:.1f}MB. "
+                        f"Please upgrade blob store to support streaming or reduce file size."
+                    )
+                # Small files can still use full download
                 content = await blob_store.get(file_path)
                 async with aiofiles.open(temp_path, "wb") as f:
                     await f.write(content)
@@ -153,6 +175,10 @@ class LoaderNode:
         import shutil
         from pathlib import Path
 
+        # ZIP bomb protection limits
+        MAX_ARCHIVE_FILES = 100  # Maximum number of files in archive
+        MAX_UNCOMPRESSED_SIZE = 500 * 1024 * 1024  # 500MB max uncompressed size
+
         # Download archive to temp
         temp_dir = tempfile.mkdtemp(prefix="omnirag_archive_")
 
@@ -163,7 +189,71 @@ class LoaderNode:
             with open(archive_path, "wb") as f:
                 f.write(archive_content)
 
-            # Extract archive
+            # ZIP bomb protection: check before extraction
+            if file_type == "zip":
+                with zipfile.ZipFile(archive_path, "r") as zf:
+                    file_list = zf.namelist()
+                    file_count = len(file_list)
+                    
+                    # Check file count
+                    if file_count > MAX_ARCHIVE_FILES:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        state["error_log"].append({
+                            "stage": "loader",
+                            "error": f"zip_bomb_protection: Archive contains {file_count} files, "
+                                     f"exceeds limit of {MAX_ARCHIVE_FILES}. "
+                                     f"Too many files in archive."
+                        })
+                        state["processing_stage"] = "error"
+                        return state
+                    
+                    # Check uncompressed size
+                    total_uncompressed = sum(info.file_size for info in zf.infolist())
+                    if total_uncompressed > MAX_UNCOMPRESSED_SIZE:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        state["error_log"].append({
+                            "stage": "loader",
+                            "error": f"zip_bomb_protection: Archive uncompressed size "
+                                     f"({total_uncompressed / 1024 / 1024:.1f}MB) "
+                                     f"exceeds limit of {MAX_UNCOMPRESSED_SIZE / 1024 / 1024:.0f}MB. "
+                                     f"Archive too large when extracted."
+                        })
+                        state["processing_stage"] = "error"
+                        return state
+
+            elif file_type in ["tar", "tar.gz", "tgz"]:
+                mode = "r:gz" if file_type in ["tar.gz", "tgz"] else "r"
+                with tarfile.open(archive_path, mode) as tf:
+                    members = tf.getmembers()
+                    file_count = len(members)
+                    
+                    # Check file count
+                    if file_count > MAX_ARCHIVE_FILES:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        state["error_log"].append({
+                            "stage": "loader",
+                            "error": f"zip_bomb_protection: Archive contains {file_count} files, "
+                                     f"exceeds limit of {MAX_ARCHIVE_FILES}. "
+                                     f"Too many files in archive."
+                        })
+                        state["processing_stage"] = "error"
+                        return state
+                    
+                    # Check uncompressed size
+                    total_uncompressed = sum(m.size for m in members if m.isfile())
+                    if total_uncompressed > MAX_UNCOMPRESSED_SIZE:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        state["error_log"].append({
+                            "stage": "loader",
+                            "error": f"zip_bomb_protection: Archive uncompressed size "
+                                     f"({total_uncompressed / 1024 / 1024:.1f}MB) "
+                                     f"exceeds limit of {MAX_UNCOMPRESSED_SIZE / 1024 / 1024:.0f}MB. "
+                                     f"Archive too large when extracted."
+                        })
+                        state["processing_stage"] = "error"
+                        return state
+
+            # Extract archive (passed ZIP bomb checks)
             extract_dir = os.path.join(temp_dir, "extracted")
             os.makedirs(extract_dir)
 

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/indexer.py
+# hypothesis_version: 6.148.7
+
+[500, 1024, 'auto', 'backend', 'batch_start', 'bbox', 'block_type', 'capability_loader', 'caption', 'channel_id', 'chunk_index', 'chunks', 'column_count', 'content', 'data', 'disabled', 'doc_id', 'elasticsearch', 'embedding_dimensions', 'enable_quantization', 'error', 'error_log', 'finalize', 'get', 'id', 'image_index', 'images', 'index_batch_size', 'indexed_images', 'indexed_keyword', 'indexed_tables', 'indexed_vector', 'indexer', 'kb_name', 'keyword', 'keyword_backend', 'metadata', 'multimodal', 'multimodal_embedding', 'multimodal_image', 'multimodal_table', 'page', 'page_num', 'processing_stage', 'progress', 'row_count', 'stage', 'strategy_config', 'table', 'task_id', 'vector', 'vector_backend', 'vectors', 'version', 'warning', '|']

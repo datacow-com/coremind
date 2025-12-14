@@ -12,11 +12,27 @@ import asyncio
 import io
 import logging
 import os
+import time
+import hashlib
+from collections import OrderedDict
 from typing import Any, Literal
 
 import httpx
+from prometheus_client import Counter
 
 logger = logging.getLogger(__name__)
+
+# Cache metrics
+mm_embed_cache_hits = Counter(
+    "rag_multimodal_embed_cache_hits_total",
+    "Multimodal embed cache hits",
+    ["modality"],
+)
+mm_embed_cache_misses = Counter(
+    "rag_multimodal_embed_cache_misses_total",
+    "Multimodal embed cache misses",
+    ["modality"],
+)
 
 
 # Modality types
@@ -52,6 +68,11 @@ class MultimodalEmbedder:
         self._text_embedder = None
         self._image_embedder = None
         self._semaphore = asyncio.Semaphore(4)
+        # Cache controls
+        self.cache_ttl = int(self.config.get("cache_ttl", os.environ.get("MM_EMBED_CACHE_TTL", 600)))
+        self.cache_maxsize = int(self.config.get("cache_maxsize", os.environ.get("MM_EMBED_CACHE_MAXSIZE", 512)))
+        self.cache_enabled = self.cache_ttl > 0 and self.cache_maxsize > 0
+        self._cache: "OrderedDict[str, tuple[float, list[float]]]" = OrderedDict()
 
     async def embed(self, content: str | bytes, modality: ModalityType = "text") -> list[float]:
         """
@@ -64,17 +85,31 @@ class MultimodalEmbedder:
         Returns:
             Embedding vector (1024-dim by default)
         """
+        cache_key = None
+        if self.cache_enabled:
+            cache_key = self._cache_key(content, modality)
+            cached = self._cache_get(cache_key)
+            if cached is not None:
+                mm_embed_cache_hits.labels(modality=modality).inc()
+                return cached
+            mm_embed_cache_misses.labels(modality=modality).inc()
+
         async with self._semaphore:
             if modality == "text":
-                return await self._embed_text(content)
+                result = await self._embed_text(content)
             elif modality == "image":
-                return await self._embed_image(content)
+                result = await self._embed_image(content)
             elif modality == "table":
-                return await self._embed_table(content)
+                result = await self._embed_table(content)
             elif modality == "mixed":
-                return await self._embed_mixed(content)
+                result = await self._embed_mixed(content)
             else:
                 raise ValueError(f"Unknown modality: {modality}")
+
+        if self.cache_enabled and cache_key is not None and result:
+            self._cache_put(cache_key, result)
+
+        return result
 
     async def embed_batch(self, items: list[tuple[str | bytes, ModalityType]]) -> list[list[float]]:
         """Embed multiple items in batch."""
@@ -203,6 +238,37 @@ class MultimodalEmbedder:
     # Class-level model cache to avoid reloading 2GB+ models
     _clip_model_cache: dict[str, tuple] = {}
     _clip_cache_lock = None
+
+    def _cache_key(self, content: Any, modality: str) -> str:
+        if isinstance(content, bytes):
+            base = content
+        else:
+            base = str(content).encode("utf-8")
+        return hashlib.sha256(base + modality.encode("utf-8")).hexdigest()
+
+    def _cache_get(self, key: str) -> list[float] | None:
+        if not self.cache_enabled:
+            return None
+        item = self._cache.get(key)
+        if not item:
+            return None
+        ts, vec = item
+        if time.time() - ts > self.cache_ttl:
+            self._cache.pop(key, None)
+            return None
+        self._cache.move_to_end(key)
+        return vec
+
+    def _cache_put(self, key: str, vec: list[float]):
+        if not self.cache_enabled:
+            return
+        self._cache[key] = (time.time(), vec)
+        self._cache.move_to_end(key)
+        self._evict_if_needed()
+
+    def _evict_if_needed(self):
+        while len(self._cache) > self.cache_maxsize:
+            self._cache.popitem(last=False)
 
     async def _embed_image_clip_local(self, image_data: bytes) -> list[float] | None:
         """Embed image using local CLIP model with caching."""

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/server/config.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.2, 0.3, 0.35, 0.4, 0.6, 0.7, 1.0, 8.0, 500, 1024, 5000, 50000000, 'APP_ENV', 'BAAI/bge-m3', 'UPLOADS_DIR', 'application/pdf', 'dashscope', 'data', 'dev', 'dev-secret', 'image/jpeg', 'image/png', 'prod', 'text/markdown', 'text/plain', 'uploads', 'usage']

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/storage/index_router.py
+# hypothesis_version: 6.148.7
+
+[100, 200, 1000, 50000, 'channel_id', 'chunk_count', 'chunk_index', 'config', 'content', 'distance', 'doc_id', 'error', 'id', 'kb_name', 'metadata', 'metadata.page_num', 'name', 'omnirag_chunks', 'page_count', 'page_num', 'pages', 'points_count', 'size', 'status', 'value', 'vector_size', 'vectors_count', 'version']

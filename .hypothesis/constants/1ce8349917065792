@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/loader.py
+# hypothesis_version: 6.148.7
+
+[100, 500, 1024, 'archive_extracted', 'archive_files', 'archive_temp_dir', 'download_to_file', 'error', 'error_log', 'extracted', 'file_path', 'file_size', 'file_type', 'get_size', 'head', 'lazy_load', 'lazy_load_path', 'loader', 'local_temp_path', 'omnirag_archive_', 'parse', 'path', 'processing_stage', 'progress', 'r', 'r:gz', 'raw_content', 'rb', 'relative_path', 'size', 'stage', 'stat', 'stream', 'success', 'tar', 'tar.gz', 'tgz', 'warning', 'wb', 'zip']

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/error_handler.py
+# hypothesis_version: 6.148.7
+
+[500, '404', '429', 'auth', 'chunker', 'connection', 'cpu_parser', 'embedder', 'error', 'error_handled', 'error_log', 'error_type', 'failed', 'failure_reason', 'format', 'gpu_parser', 'indexer', 'invalid', 'loader', 'network', 'not found', 'not_found', 'permission', 'processing_stage', 'progress', 'rate', 'rate_limit', 'retry', 'retry_count', 'router', 'should_retry', 'stage', 'temporary', 'timeout', 'unknown', 'validation']

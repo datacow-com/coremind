@@ -1,16 +1,32 @@
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import TypedDict
 
 # --- Pydantic Models for API / Strategy Config ---
 
 
 class ChunkingStrategy(BaseModel):
+    """
+    分块策略配置
+    
+    P0 Fix: 添加字段验证确保 chunk_size > 0, chunk_overlap >= 0
+    P1 Fix: 添加 model_validator 确保 chunk_overlap < chunk_size
+    """
     mode: Literal["fixed", "semantic", "layout_aware", "table_first"] = "fixed"
-    chunk_size: int = 512
-    chunk_overlap: int = 50
+    chunk_size: int = Field(default=512, gt=0, description="Chunk size must be positive")
+    chunk_overlap: int = Field(default=50, ge=0, description="Chunk overlap must be non-negative")
     preserve_tables: bool = True
+    
+    @model_validator(mode='after')
+    def validate_overlap_less_than_size(self) -> Self:
+        """P1 Fix: Ensure chunk_overlap < chunk_size"""
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError(
+                f"chunk_overlap ({self.chunk_overlap}) must be less than "
+                f"chunk_size ({self.chunk_size})"
+            )
+        return self
 
 
 class AlgorithmConfig(BaseModel):
@@ -41,6 +57,24 @@ class StrategyConfig(BaseModel):
 
     # 分块策略 (nested)
     chunking: ChunkingStrategy = Field(default_factory=ChunkingStrategy)
+    # 平铺访问（前端/配置可能传递）
+    # P0 Fix: 添加字段验证确保 chunk_size > 0, chunk_overlap >= 0
+    chunking_mode: Literal["fixed", "semantic", "layout_aware", "table_first"] | None = None
+    chunk_size: int | None = Field(default=None, gt=0, description="Chunk size must be positive if set")
+    chunk_overlap: int | None = Field(default=None, ge=0, description="Chunk overlap must be non-negative if set")
+    preserve_tables: bool | None = None
+    
+    @model_validator(mode='after')
+    def validate_flat_overlap_less_than_size(self) -> Self:
+        """P1 Fix: Ensure flat chunk_overlap < chunk_size when both are set"""
+        # Only validate if both flat fields are explicitly set
+        if self.chunk_size is not None and self.chunk_overlap is not None:
+            if self.chunk_overlap >= self.chunk_size:
+                raise ValueError(
+                    f"chunk_overlap ({self.chunk_overlap}) must be less than "
+                    f"chunk_size ({self.chunk_size})"
+                )
+        return self
 
     # Embedding策略
     embedding_model: str = "BAAI/bge-m3"
@@ -75,24 +109,23 @@ class StrategyConfig(BaseModel):
 
     # P2 Fix: Compatibility properties for flat field access
     @property
-    def chunking_mode(self) -> str:
-        """Flat access: chunking_mode -> chunking.mode"""
-        return self.chunking.mode
+    def chunking_mode_effective(self) -> str:
+        """平铺模式优先，否则回退 nested"""
+        return self.chunking_mode or self.chunking.mode
 
     @property
-    def chunk_size(self) -> int:
-        """Flat access: chunk_size -> chunking.chunk_size"""
-        return self.chunking.chunk_size
+    def chunk_size_effective(self) -> int:
+        """平铺优先，否则回退"""
+        return self.chunk_size if self.chunk_size is not None else self.chunking.chunk_size
 
     @property
-    def chunk_overlap(self) -> int:
-        """Flat access: chunk_overlap -> chunking.chunk_overlap"""
-        return self.chunking.chunk_overlap
+    def chunk_overlap_effective(self) -> int:
+        """平铺优先，否则回退 - P2 Fix: 0 is a valid value, use explicit None check"""
+        return self.chunk_overlap if self.chunk_overlap is not None else self.chunking.chunk_overlap
     
     @property
-    def preserve_tables(self) -> bool:
-        """Flat access: preserve_tables -> chunking.preserve_tables"""
-        return self.chunking.preserve_tables
+    def preserve_tables_effective(self) -> bool:
+        return self.preserve_tables if self.preserve_tables is not None else self.chunking.preserve_tables
 
 
 # --- TypedDicts for LangGraph State ---

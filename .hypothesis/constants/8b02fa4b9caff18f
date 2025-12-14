@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/algorithms/mindmap_light.py
+# hypothesis_version: 6.148.7
+
+['\n\n---\n\n', 'Knowledge Base', 'Unknown', 'children', 'chunks', 'collect', 'content', 'dashscope', 'default', 'kb_name', 'keywords', 'meta', 'mindmap', 'mindmap_path', 'mindmaps', 'name', 'store', 'subtopics', 'topic_count', 'topics', 'utf-8', 'w']

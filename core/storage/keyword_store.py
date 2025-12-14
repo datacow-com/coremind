@@ -14,6 +14,45 @@ except Exception:  # pragma: no cover
 
 T = TypeVar("T")
 
+# Module-level metric singletons to avoid duplicate registration in tests
+_ES_LATENCY_METRIC = None
+_ES_ERRORS_METRIC = None
+
+
+def _get_es_latency_metric():
+    """Get or create the ES latency histogram metric."""
+    global _ES_LATENCY_METRIC
+    if _ES_LATENCY_METRIC is None and prometheus_client:
+        try:
+            _ES_LATENCY_METRIC = prometheus_client.Histogram(
+                "es_keyword_op_duration_ms",
+                "ES keyword op latency (ms)",
+                ["op", "index"],
+                buckets=(5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000),
+            )
+        except ValueError:
+            # Already registered, get from registry
+            _ES_LATENCY_METRIC = prometheus_client.REGISTRY._names_to_collectors.get(
+                "es_keyword_op_duration_ms"
+            )
+    return _ES_LATENCY_METRIC
+
+
+def _get_es_errors_metric():
+    """Get or create the ES errors counter metric."""
+    global _ES_ERRORS_METRIC
+    if _ES_ERRORS_METRIC is None and prometheus_client:
+        try:
+            _ES_ERRORS_METRIC = prometheus_client.Counter(
+                "es_keyword_op_errors", "ES keyword op errors", ["op", "index"]
+            )
+        except ValueError:
+            # Already registered, get from registry
+            _ES_ERRORS_METRIC = prometheus_client.REGISTRY._names_to_collectors.get(
+                "es_keyword_op_errors"
+            )
+    return _ES_ERRORS_METRIC
+
 
 class AsyncElasticsearchKeywordStore:
     def __init__(self):
@@ -49,19 +88,9 @@ class AsyncElasticsearchKeywordStore:
         )
         self.available = True
 
-        if prometheus_client:
-            self._metric_latency = prometheus_client.Histogram(
-                "es_keyword_op_duration_ms",
-                "ES keyword op latency (ms)",
-                ["op", "index"],
-                buckets=(5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000),
-            )
-            self._metric_errors = prometheus_client.Counter(
-                "es_keyword_op_errors", "ES keyword op errors", ["op", "index"]
-            )
-        else:
-            self._metric_latency = None
-            self._metric_errors = None
+        # Use module-level singletons to avoid duplicate registration
+        self._metric_latency = _get_es_latency_metric()
+        self._metric_errors = _get_es_errors_metric()
 
     def _record(self, op: str, index: str, dur_ms: float, error: bool = False):
         if self._metric_latency:
@@ -140,15 +169,9 @@ class AsyncElasticsearchKeywordStore:
             action = {"_index": index_name, "_id": doc_id, "_source": doc}
             actions.append(action)
 
-        async def _do():
-            return await async_bulk(self.client, actions)
-
         t0 = time.perf_counter()
         try:
-            await self._with_retry(
-                "bulk_upsert", index_name, lambda: None, attempts=0
-            )  # metric hook
-            await _do()
+            await async_bulk(self.client, actions)
             self._record("bulk_upsert", index_name, (time.perf_counter() - t0) * 1000)
         except Exception:
             self._record("bulk_upsert", index_name, (time.perf_counter() - t0) * 1000, error=True)
@@ -226,3 +249,26 @@ def get_keyword_client() -> AsyncElasticsearchKeywordStore:
     if _KEYWORD_STORE is None:
         _KEYWORD_STORE = AsyncElasticsearchKeywordStore()
     return _KEYWORD_STORE
+
+
+def reset_keyword_client():
+    """
+    Reset the keyword store singleton.
+    
+    This is necessary for tests that run in different event loops,
+    as the AsyncElasticsearch client is bound to the event loop it was created in.
+    """
+    global _KEYWORD_STORE
+    if _KEYWORD_STORE is not None:
+        try:
+            # Close the async client if possible
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_KEYWORD_STORE.client.close())
+            except RuntimeError:
+                # No running loop, just clear the reference
+                pass
+        except Exception:
+            pass
+    _KEYWORD_STORE = None

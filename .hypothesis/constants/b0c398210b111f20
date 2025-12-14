@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/server/database.py
+# hypothesis_version: 6.148.7
+
+[3600, '+asyncpg', 'DATABASE_URL', 'SQLALCHEMY_ECHO', 'false', 'postgresql://', 'true']

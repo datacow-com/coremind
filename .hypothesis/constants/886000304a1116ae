@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/algorithms/raptor_deep.py
+# hypothesis_version: 6.148.7
+
+[-1000000000.0, 256, 1000, '50000', '6', 'RAPTOR_MAX_CHUNKS', 'channel_id', 'chunks', 'collect_texts', 'content', 'dashscope', 'default', 'indices', 'kb_name', 'layers', 'max_cluster', 'meta', 'prompt', 'random_seed', 'raptor', 'raptor_path_deep', 'store_raptor', 'summaries', 'summarize_groups', 'summary', 'summary_count', 'utf-8', 'w']

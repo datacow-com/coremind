@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/state.py
+# hypothesis_version: 6.148.7
+
+[0.5, 512, 1024, 3600, 'BAAI/bge-m3', 'auto', 'chunk', 'deepseek', 'disabled', 'elasticsearch', 'embed', 'finalize', 'fixed', 'footer', 'header', 'image', 'index', 'layout_aware', 'local', 'milvus', 'paddle', 'parse', 'qdrant', 'qwen-vl', 'semantic', 'table', 'table_first', 'text', 'upload', 'volc_engine']

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/server/models.py
+# hypothesis_version: 6.148.7
+
+[100, 200, 500, 1000, 1024, 'kb_configs', 'kb_documents', 'local', 'model_configs', 'providers', 'storage_configs', 'web_search_configs']

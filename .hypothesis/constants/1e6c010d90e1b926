@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/parser/gpu_parser.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.85, 0.9, 0.95, 1.0, 30.0, 60.0, 100, 1000, 10000, 'Authorization', 'Content-Type', 'DASHSCOPE_API_KEY', 'OCRNormal', 'RGB', 'VOLC_ACCESS_KEY', 'VOLC_REGION', 'VOLC_SECRET_KEY', 'X-Access-Key', 'X-Secret-Key', 'application/json', 'auto', 'bbox', 'blocks', 'ch', 'choices', 'cn-north-1', 'code', 'confidence', 'content', 'data', 'deepseek', 'error', 'error_log', 'gpu_parser', 'image', 'image_base64', 'images', 'input', 'layoutlm_model', 'line_texts', 'message', 'messages', 'mock', 'model', 'ocr_concurrency', 'ocr_confidence', 'ocr_fallback_chain', 'ocr_provider', 'output', 'paddle', 'page', 'parameters', 'parsed_blocks', 'progress', 'provider', 'qwen-vl', 'qwen-vl-max', 'raw_content', 'result_format', 'role', 'stage', 'strategy_config', 'text', 'type', 'unknown', 'user', 'utf-8', 'volc_engine', 'yolo', 'yolo_model']

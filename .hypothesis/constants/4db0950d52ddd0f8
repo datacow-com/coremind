@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/llm/gateway.py
+# hypothesis_version: 6.148.7
+
+[30.0, 60.0, 500, 1000, '60', 'Authorization', 'Content-Type', 'LLM_HTTP_TIMEOUT', 'a', 'application/json', 'chat', 'choices', 'circuit open', 'compatible-mode', 'content', 'dashscope', 'data', 'duration_ms', 'kind', 'llm', 'llm.error', 'llm.provider', 'message', 'messages', 'model', 'openai', 'provider', 'role', 'stream', 'tokens_in', 'tokens_out', 'ts', 'usage', 'usage.jsonl', 'usage_dir_resolved', 'user', 'utf-8']

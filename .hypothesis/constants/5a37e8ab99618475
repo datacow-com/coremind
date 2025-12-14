@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/retrieval/multimodal/embedder.py
+# hypothesis_version: 6.148.7
+
+[0.0, 1.0, 512, 600, 1000, 1024, 8000, 'Authorization', 'BAAI/bge-m3', 'MM_EMBED_CACHE_TTL', 'OPENAI_API_KEY', 'RGB', 'auto', 'cache_maxsize', 'cache_ttl', 'content', 'data', 'dimension', 'embedding', 'error_log', 'image', 'image_model', 'images', 'input', 'mixed', 'modality', 'model', 'page', 'parsed_blocks', 'pt', 'strategy_config', 'table', 'text', 'text_model', 'unified_space', 'utf-8', 'vlm_provider', '|---']

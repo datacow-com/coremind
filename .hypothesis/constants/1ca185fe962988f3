@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/embedding/registry.py
+# hypothesis_version: 6.148.7
+
+[256, 'auto', 'simple']

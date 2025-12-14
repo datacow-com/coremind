@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/quality_checker.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.3, 0.5, 0.6, 0.7, 1.0, 100, '[EMAIL]', '[ID_NUMBER]', '[PHONE]', '\\b1[3-9]\\d{9}\\b', '\\b\\d{17}[\\dXx]\\b', 'chunks', 'content', 'dedup_enabled', 'enable_cleaning', 'enable_dedup', 'enable_pii_filter', 'filtered_count', 'metadata', 'min_quality_score', 'original_count', 'pii_filtered', 'progress', 'quality_checker', 'quality_filtered', 'quality_metrics', 'quality_passed', 'quality_score', 'removed_count', 'strategy_config']

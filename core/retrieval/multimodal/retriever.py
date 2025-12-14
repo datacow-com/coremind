@@ -98,8 +98,18 @@ class MultimodalRetriever:
         """
         query = state.get("input_query", "")
         kb_names = state.get("kb_names", [])
-        # P0 Fix: Get channel_id from state for multi-tenant isolation
-        channel_id = state.get("channel_id", "default")
+        
+        # P0 Fix: Enforce channel_id for multi-tenant isolation
+        channel_id = state.get("channel_id")
+        if not channel_id:
+            logger.warning("channel_id not provided, multimodal retrieval requires tenant isolation")
+            if "error_log" not in state:
+                state["error_log"] = []
+            state["error_log"].append({
+                "stage": "multimodal_retriever",
+                "error": "channel_id is required for multi-tenant isolation",
+            })
+            return state
 
         if not query or not kb_names:
             return state
@@ -156,6 +166,7 @@ class MultimodalRetriever:
         self,
         query: str | bytes,
         kb_names: list[str],
+        channel_id: str,  # P0 Fix: Required for multi-tenant isolation
         modality: ModalityType = "text",
         top_k: int | None = None,
     ) -> list[MultimodalResult]:
@@ -165,12 +176,20 @@ class MultimodalRetriever:
         Args:
             query: Text string or image bytes
             kb_names: Knowledge bases to search
+            channel_id: Required channel identifier for tenant isolation
             modality: Query modality type
             top_k: Number of results to return
 
         Returns:
             List of MultimodalResult
+            
+        Raises:
+            ValueError: If channel_id is not provided
         """
+        # P0 Fix: Enforce channel_id for multi-tenant isolation
+        if not channel_id:
+            raise ValueError("channel_id is required for multi-tenant isolation")
+        
         k = top_k or self.top_k
 
         # Generate query embedding
@@ -183,6 +202,7 @@ class MultimodalRetriever:
                 query_embedding=query_embedding,
                 query_modality=modality,
                 query_text=query if modality == "text" else "",
+                channel_id=channel_id,  # P0 Fix: Pass channel_id for isolation
             )
             all_results.extend(results)
 
@@ -196,9 +216,23 @@ class MultimodalRetriever:
         query_embedding: list[float],
         query_modality: ModalityType,
         query_text: str = "",
-        channel_id: str = "default",  # Added for multi-tenant isolation
+        channel_id: str | None = None,
     ) -> list[MultimodalResult]:
-        """Search a single knowledge base with channel isolation."""
+        """Search a single knowledge base with channel isolation.
+        
+        Args:
+            kb_name: Knowledge base name
+            query_embedding: Query vector
+            query_modality: Query modality type
+            query_text: Original query text
+            channel_id: Required channel identifier for tenant isolation
+            
+        Raises:
+            ValueError: If channel_id is not provided
+        """
+        # P0 Fix: Enforce channel_id for multi-tenant isolation
+        if not channel_id:
+            raise ValueError("channel_id is required for multi-tenant isolation")
         results = []
 
         # Search text chunks
@@ -222,7 +256,7 @@ class MultimodalRetriever:
         kb_name: str,
         query_embedding: list[float],
         query_text: str,
-        channel_id: str = "default",  # Added for multi-tenant isolation
+        channel_id: str,  # P0 Fix: Required, no default
     ) -> list[MultimodalResult]:
         """Search text vectors in Qdrant with channel isolation."""
         try:
@@ -275,7 +309,7 @@ class MultimodalRetriever:
         self,
         kb_name: str,
         query_embedding: list[float],
-        channel_id: str = "default",  # Added for multi-tenant isolation
+        channel_id: str,  # P0 Fix: Required, no default
     ) -> list[MultimodalResult]:
         """Search image-specific collection with channel isolation."""
         try:
@@ -324,7 +358,7 @@ class MultimodalRetriever:
         self,
         kb_name: str,
         query_embedding: list[float],
-        channel_id: str = "default",  # Added for multi-tenant isolation
+        channel_id: str,  # P0 Fix: Required, no default
     ) -> list[MultimodalResult]:
         """Search table-specific collection with channel isolation."""
         try:
@@ -333,10 +367,15 @@ class MultimodalRetriever:
             from core.storage.channel_utils import channel_collection_name
             from core.storage.vector_store import QdrantVectorStore
 
-            # Use channel_id from parameter for multi-tenant isolation
-            collection = channel_collection_name(channel_id, kb_name)
+            # Table vectors are indexed into dedicated *_tables collection
+            base_collection = channel_collection_name(channel_id, kb_name)
+            collection = f"{base_collection}_tables"
 
             store = QdrantVectorStore()
+
+            # Collection guard: if tables were not indexed, degrade gracefully
+            if not await store.collection_exists(collection):
+                return []
 
             # Search with table filter
             table_filter = Filter(

@@ -25,6 +25,45 @@ except Exception:  # pragma: no cover
 
 T = TypeVar("T")
 
+# Module-level metric singletons to avoid duplicate registration in tests
+_QDRANT_LATENCY_METRIC = None
+_QDRANT_ERRORS_METRIC = None
+
+
+def _get_qdrant_latency_metric():
+    """Get or create the Qdrant latency histogram metric."""
+    global _QDRANT_LATENCY_METRIC
+    if _QDRANT_LATENCY_METRIC is None and prometheus_client:
+        try:
+            _QDRANT_LATENCY_METRIC = prometheus_client.Histogram(
+                "qdrant_op_duration_ms",
+                "Qdrant operation latency (ms)",
+                ["op", "collection"],
+                buckets=(5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000),
+            )
+        except ValueError:
+            # Already registered, get from registry
+            _QDRANT_LATENCY_METRIC = prometheus_client.REGISTRY._names_to_collectors.get(
+                "qdrant_op_duration_ms"
+            )
+    return _QDRANT_LATENCY_METRIC
+
+
+def _get_qdrant_errors_metric():
+    """Get or create the Qdrant errors counter metric."""
+    global _QDRANT_ERRORS_METRIC
+    if _QDRANT_ERRORS_METRIC is None and prometheus_client:
+        try:
+            _QDRANT_ERRORS_METRIC = prometheus_client.Counter(
+                "qdrant_op_errors", "Qdrant operation errors", ["op", "collection"]
+            )
+        except ValueError:
+            # Already registered, get from registry
+            _QDRANT_ERRORS_METRIC = prometheus_client.REGISTRY._names_to_collectors.get(
+                "qdrant_op_errors"
+            )
+    return _QDRANT_ERRORS_METRIC
+
 
 class QdrantVectorStore:
     def __init__(self):
@@ -49,20 +88,9 @@ class QdrantVectorStore:
         self.client = QdrantClient(url=self.url, api_key=self.api_key, timeout=timeout)
         self.available = True  # Assume available if init succeeds, can refine with health check
 
-        # metrics (optional)
-        if prometheus_client:
-            self._metric_latency = prometheus_client.Histogram(
-                "qdrant_op_duration_ms",
-                "Qdrant operation latency (ms)",
-                ["op", "collection"],
-                buckets=(5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000),
-            )
-            self._metric_errors = prometheus_client.Counter(
-                "qdrant_op_errors", "Qdrant operation errors", ["op", "collection"]
-            )
-        else:
-            self._metric_latency = None
-            self._metric_errors = None
+        # metrics (optional) - use module-level singletons to avoid duplicate registration
+        self._metric_latency = _get_qdrant_latency_metric()
+        self._metric_errors = _get_qdrant_errors_metric()
 
     def _record(self, op: str, collection: str | None, dur_ms: float, error: bool = False):
         if self._metric_latency:
@@ -307,3 +335,9 @@ def get_vector_client() -> QdrantVectorStore:
     if _VECTOR_STORE is None:
         _VECTOR_STORE = QdrantVectorStore()
     return _VECTOR_STORE
+
+
+def reset_vector_client():
+    """Reset the vector client singleton (useful for tests)."""
+    global _VECTOR_STORE
+    _VECTOR_STORE = None

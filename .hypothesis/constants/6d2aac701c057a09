@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/processors/video_processor.py
+# hypothesis_version: 6.148.7
+
+[3600, '.jpg', 'auto', 'avi', 'base', 'content', 'data', 'duration_seconds', 'end', 'error', 'error_log', 'extracted_text', 'file_path', 'file_type', 'fps', 'frame_count', 'frame_description', 'frame_number', 'height', 'images', 'keyframe', 'keyframe_interval', 'llm_summary', 'metadata', 'mkv', 'model', 'mov', 'mp4', 'page', 'parsed_blocks', 'raw_content', 'segments', 'source', 'stage', 'start', 'strategy_config', 'summarize', 'text', 'timestamp', 'timestamp_str', 'transcription', 'type', 'video_processor', 'vlm', 'vlm_provider', 'webm', 'whisper', 'whisper_model', 'width']

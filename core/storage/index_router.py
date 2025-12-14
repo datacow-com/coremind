@@ -318,3 +318,148 @@ def get_collection_stats(collection_name: str) -> dict[str, Any]:
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+def list_kb_chunks(
+    kb_name: str,
+    channel_id: str | None = None,
+    offset: int = 0,
+    limit: int = 1000,
+    version: int = 1,
+) -> list[dict[str, Any]]:
+    """
+    P0 Fix: List chunks from a KB with pagination and channel isolation.
+    
+    This function is designed for RAPTOR/GraphRAG algorithms that need
+    to iterate through all chunks in a knowledge base.
+    
+    Args:
+        kb_name: Knowledge base name (required)
+        channel_id: Channel identifier for multi-tenant isolation
+        offset: Pagination offset (point ID to start from)
+        limit: Maximum number of results per page
+        version: KB version number
+        
+    Returns:
+        List of chunk dicts with content and metadata
+    """
+    q_client = get_vector_client()
+    if not q_client.available:
+        return []
+    
+    if not kb_name:
+        return []
+    
+    # Build collection name with channel isolation
+    collection_name = channel_collection_name(channel_id, kb_name, version)
+    
+    try:
+        # Use scroll API for efficient pagination
+        results, next_offset = q_client.client.scroll(
+            collection_name=collection_name,
+            limit=limit,
+            offset=offset if offset else None,
+            with_payload=True,
+            with_vectors=False,
+        )
+        
+        chunks = []
+        for r in results:
+            payload = r.payload or {}
+            metadata = payload.get("metadata", {})
+            
+            # Validate channel_id if provided (defense in depth)
+            result_channel = metadata.get("channel_id") or payload.get("channel_id")
+            if channel_id and result_channel and result_channel != channel_id:
+                continue  # Skip results from wrong channel
+            
+            chunks.append({
+                "id": str(r.id),
+                "content": payload.get("content", ""),
+                "metadata": metadata,
+                "doc_id": payload.get("doc_id"),
+                "chunk_index": payload.get("chunk_index"),
+                "kb_name": kb_name,
+                "channel_id": channel_id,
+            })
+        
+        return chunks
+        
+    except Exception:
+        return []
+
+
+def scroll_kb_chunks(
+    kb_name: str,
+    channel_id: str | None = None,
+    batch_size: int = 1000,
+    max_chunks: int = 50000,
+    version: int = 1,
+):
+    """
+    P0 Fix: Generator for scrolling through all chunks in a KB.
+    
+    Yields batches of chunks for memory-efficient processing.
+    
+    Args:
+        kb_name: Knowledge base name
+        channel_id: Channel identifier for multi-tenant isolation
+        batch_size: Number of chunks per batch
+        max_chunks: Maximum total chunks to return (safety limit)
+        version: KB version number
+        
+    Yields:
+        Batches of chunk dicts
+    """
+    q_client = get_vector_client()
+    if not q_client.available:
+        return
+    
+    if not kb_name:
+        return
+    
+    collection_name = channel_collection_name(channel_id, kb_name, version)
+    
+    total_yielded = 0
+    offset = None
+    
+    try:
+        while total_yielded < max_chunks:
+            results, offset = q_client.client.scroll(
+                collection_name=collection_name,
+                limit=batch_size,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            
+            if not results:
+                break
+            
+            batch = []
+            for r in results:
+                payload = r.payload or {}
+                metadata = payload.get("metadata", {})
+                
+                # Validate channel_id
+                result_channel = metadata.get("channel_id") or payload.get("channel_id")
+                if channel_id and result_channel and result_channel != channel_id:
+                    continue
+                
+                batch.append({
+                    "id": str(r.id),
+                    "content": payload.get("content", ""),
+                    "metadata": metadata,
+                    "doc_id": payload.get("doc_id"),
+                    "chunk_index": payload.get("chunk_index"),
+                })
+            
+            if batch:
+                yield batch
+                total_yielded += len(batch)
+            
+            if offset is None:
+                break
+                
+    except Exception:
+        return

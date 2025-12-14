@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/embedder.py
+# hypothesis_version: 6.148.7
+
+['BAAI/bge-m3', '_ensure_config', 'batch_index', 'chunks', 'completed_chunks', 'content', 'embedder', 'embedding_batch_size', 'embedding_model', 'embedding_progress', 'error', 'error_log', 'index', 'processing_stage', 'progress', 'stage', 'strategy_config', 'vectors']

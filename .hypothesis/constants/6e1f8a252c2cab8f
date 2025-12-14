@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/algorithms/raptor_light.py
+# hypothesis_version: 6.148.7
+
+['channel_id', 'collect', 'max_cluster', 'prompt', 'store', 'summarize', '简洁总结以下内容，不超过150字。']

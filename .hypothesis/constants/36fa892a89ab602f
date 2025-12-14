@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/vision/layout_analyzer.py
+# hypothesis_version: 6.148.7
+
+[0.5, 0.7, 0.9, 255, 960, 1024, 1280, 2000, 'RGB', 'bbox', 'caption', 'confidence', 'content', 'data', 'description', 'detect_reading_order', 'dit', 'equation', 'error', 'error_log', 'figure', 'footer', 'header', 'heading', 'image', 'images', 'input_size', 'labels', 'layout_analyzer', 'layout_type', 'layoutlmv3', 'list', 'metadata', 'model', 'opencv', 'order', 'page', 'page_number', 'paragraph', 'parsed_blocks', 'pp_structure', 'reading_order', 'res', 'score', 'stage', 'table', 'text', 'title', 'type', 'yolo_doclayout']

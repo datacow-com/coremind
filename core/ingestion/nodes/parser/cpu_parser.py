@@ -58,7 +58,13 @@ class CpuTextParser:
     async def __call__(self, state: IngestState) -> IngestState:
         with ingest_duration.labels(stage="cpu_parser").time():
             content = state.get("raw_content")
-            if not content:
+            local_path = None
+            
+            # P1 Fix: Support lazy loading - use local_temp_path for streaming
+            if not content and state.get("lazy_load") and state.get("local_temp_path"):
+                local_path = state["local_temp_path"]
+            
+            if not content and not local_path:
                 return state
 
             file_type = state["file_type"].lower()
@@ -66,24 +72,47 @@ class CpuTextParser:
 
             try:
                 if file_type == "pdf":
-                    blocks = self._parse_pdf(content)
+                    # Use streaming for lazy-loaded PDFs to reduce memory
+                    if local_path:
+                        blocks = self._parse_pdf_streaming(local_path)
+                    else:
+                        blocks = self._parse_pdf(content)
 
                 elif file_type in ("md", "markdown"):
+                    # For non-PDF types with lazy loading, read file content
+                    if local_path and not content:
+                        with open(local_path, "rb") as f:
+                            content = f.read()
                     blocks = self._parse_markdown(content)
 
                 elif file_type in ("html", "htm"):
+                    if local_path and not content:
+                        with open(local_path, "rb") as f:
+                            content = f.read()
                     blocks = self._parse_html(content)
 
                 elif file_type == "eml":
+                    if local_path and not content:
+                        with open(local_path, "rb") as f:
+                            content = f.read()
                     blocks = self._parse_email(content)
 
                 elif file_type in ("docx", "doc"):
+                    if local_path and not content:
+                        with open(local_path, "rb") as f:
+                            content = f.read()
                     blocks = self._parse_docx(content)
 
                 elif file_type in ("pptx", "ppt"):
+                    if local_path and not content:
+                        with open(local_path, "rb") as f:
+                            content = f.read()
                     blocks = self._parse_pptx(content)
 
                 elif file_type == "txt":
+                    if local_path and not content:
+                        with open(local_path, "rb") as f:
+                            content = f.read()
                     blocks = self._parse_text(content)
 
             except Exception as e:
@@ -94,11 +123,72 @@ class CpuTextParser:
             state["parsed_blocks"] = blocks
             return state
 
+    def _parse_pdf_streaming(self, file_path: str) -> list:
+        """
+        Parse PDF from file path using PyMuPDF with streaming.
+        
+        P1 Fix: Memory-efficient parsing for large files.
+        Opens file directly instead of loading into memory.
+        Processes one page at a time to minimize memory footprint.
+        """
+        blocks = []
+        # Open directly from file path - PyMuPDF handles streaming internally
+        with fitz.open(file_path) as doc:
+            for page_num, page in enumerate(doc):
+                # Process page and immediately release
+                page_blocks = self._extract_page_content(page, page_num)
+                blocks.extend(page_blocks)
+                # Explicitly clear page to help GC
+                page = None
+        return blocks
+
+    def _extract_page_content(self, page, page_num: int) -> list:
+        """Extract content from a single page."""
+        blocks = []
+        
+        # Extract text blocks
+        text_blocks = page.get_text("blocks")
+        for b in text_blocks:
+            if b[6] == 0:  # text block
+                blocks.append({
+                    "type": "text",
+                    "content": b[4],
+                    "bbox": [b[0], b[1], b[2], b[3]],
+                    "page": page_num + 1,
+                })
+        
+        # Extract tables
+        try:
+            tables = page.find_tables()
+            for table_idx, table in enumerate(tables):
+                table_data = table.extract()
+                if table_data:
+                    md_table = self._table_to_markdown(table_data)
+                    if md_table.strip():
+                        blocks.append({
+                            "type": "table",
+                            "content": md_table,
+                            "bbox": list(table.bbox) if hasattr(table, 'bbox') else None,
+                            "page": page_num + 1,
+                            "table_index": table_idx,
+                            "row_count": len(table_data),
+                            "col_count": len(table_data[0]) if table_data else 0,
+                        })
+        except (AttributeError, Exception):
+            pass
+        
+        return blocks
+
     def _parse_pdf(self, content: bytes) -> list:
-        """Parse PDF using PyMuPDF."""
+        """
+        Parse PDF using PyMuPDF.
+        
+        P1 Fix: Added table detection using PyMuPDF's find_tables() method.
+        """
         blocks = []
         with fitz.open(stream=content, filetype="pdf") as doc:
             for page_num, page in enumerate(doc):
+                # Extract text blocks
                 text_blocks = page.get_text("blocks")
                 for b in text_blocks:
                     # (x0, y0, x1, y1, "text", block_no, block_type)
@@ -112,6 +202,35 @@ class CpuTextParser:
                                 "page": page_num + 1,
                             }
                         )
+                
+                # P1 Fix: Extract tables using PyMuPDF's table detection
+                try:
+                    tables = page.find_tables()
+                    for table_idx, table in enumerate(tables):
+                        # Extract table data
+                        table_data = table.extract()
+                        if table_data:
+                            # Convert to Markdown format
+                            md_table = self._table_to_markdown(table_data)
+                            if md_table.strip():
+                                blocks.append(
+                                    {
+                                        "type": "table",
+                                        "content": md_table,
+                                        "bbox": list(table.bbox) if hasattr(table, 'bbox') else None,
+                                        "page": page_num + 1,
+                                        "table_index": table_idx,
+                                        "row_count": len(table_data),
+                                        "col_count": len(table_data[0]) if table_data else 0,
+                                    }
+                                )
+                except AttributeError:
+                    # find_tables() not available in older PyMuPDF versions
+                    pass
+                except Exception:
+                    # Table detection failed, continue with text extraction
+                    pass
+                    
         return blocks
 
     def _parse_markdown(self, content: bytes) -> list:

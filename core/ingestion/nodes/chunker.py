@@ -209,8 +209,13 @@ class SmartChunker:
             "heading_weight": weights["heading_weight"],
         }
 
+        import uuid
+        
+        # Generate UUID for Qdrant compatibility (requires UUID or unsigned int)
+        chunk_uuid = str(uuid.uuid4())
+        
         return {
-            "id": f"{state['task_id']}_{idx}",
+            "id": chunk_uuid,
             "content": content,
             "page_num": page_num,
             "doc_id": state["task_id"],

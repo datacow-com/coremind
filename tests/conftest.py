@@ -4,6 +4,31 @@ from typing import Any
 
 import pytest
 
+# Import real E2E fixtures from conftest_real.py
+# These fixtures provide connections to docker-compose services
+from tests.core.conftest_real import (
+    real_qdrant_client,
+    real_es_client,
+    real_minio_client,
+    real_redis_client,
+    test_channel_a,
+    test_channel_b,
+    unique_channel_id,
+    test_docs_dir,
+    large_pdf_path,
+    mixed_content_pdf_path,
+    table_pdf_path,
+    pptx_path,
+    uploads_tmp_dir,
+    cleanup_qdrant_collections,
+    cleanup_es_indexes,
+    cleanup_minio_objects,
+    cleanup_redis_keys,
+    cleanup_temp_files,
+    cleanup_all_resources,
+    test_execution_state,
+)
+
 
 @pytest.fixture
 def sample_chunk_metadata() -> dict[str, Any]:

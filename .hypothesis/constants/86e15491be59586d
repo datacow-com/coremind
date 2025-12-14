@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/processors/excel_processor.py
+# hypothesis_version: 6.148.7
+
+[100, 10000, '\n### Formulas:', ' |', ' | ', ',', '---', '=', 'Sheet1', 'auto', 'cell', 'col_count', 'columns', 'common_columns', 'content', 'csv', 'data', 'detect_relations', 'error', 'error_log', 'excel', 'excel_processor', 'extracted_text', 'file_path', 'file_type', 'first_row', 'formula', 'formulas', 'has_formulas', 'header', 'header_detection', 'max_rows', 'metadata', 'name', 'none', 'page', 'parse_all_sheets', 'parse_formulas', 'parsed_blocks', 'raw_content', 'row_count', 'sheet_name', 'sheet_relations', 'sheets', 'source_type', 'stage', 'table', 'type', 'utf-8-sig', 'value', 'xls', 'xlsx', '|', '| ']

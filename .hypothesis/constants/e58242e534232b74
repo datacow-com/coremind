@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/parser/__init__.py
+# hypothesis_version: 6.148.7
+
+['CpuTextParser', 'GpuVisionParser']

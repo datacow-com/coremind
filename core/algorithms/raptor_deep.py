@@ -9,7 +9,7 @@ from typing_extensions import TypedDict
 
 from core.embedding.provider_embedder import Embedder
 from core.llm.gateway import LLMGateway
-from core.storage.index_router import list_all_meta
+from core.storage.index_router import list_kb_chunks, scroll_kb_chunks
 from server.config import settings
 
 
@@ -30,51 +30,44 @@ class RaptorDeepState(TypedDict):
 async def collect_texts(state: RaptorDeepState) -> RaptorDeepState:
     """
     P0 Fix: Collect texts with kb_name and channel_id filtering.
-    Uses pagination to avoid OOM on large datasets.
+    Uses the new list_kb_chunks API with proper pagination and channel isolation.
     """
-    from core.storage.index_router import list_page_meta
+    from core.storage.index_router import list_kb_chunks, scroll_kb_chunks
     
     kb_name = state.get("kb_name")
-    channel_id = state.get("channel_id", "default")
+    channel_id = state.get("channel_id")
     
-    # Pagination to avoid OOM
+    # P0 Fix: Enforce channel_id for multi-tenant isolation
+    if not channel_id:
+        raise ValueError("channel_id is required for RAPTOR processing to ensure tenant isolation")
+    
+    if not kb_name:
+        raise ValueError("kb_name is required for RAPTOR processing")
+    
+    # Use scroll API for memory-efficient iteration
+    max_chunks = int(os.environ.get("RAPTOR_MAX_CHUNKS", "50000"))
     all_chunks: list[str] = []
-    offset = 0
-    page_size = 1000  # Process in batches
-    max_chunks = 50000  # Safety limit
     
-    while len(all_chunks) < max_chunks:
-        try:
-            # Get page with filtering
-            page = list_page_meta(
-                kb_name=kb_name,
-                channel_id=channel_id,
-                offset=offset,
-                limit=page_size
-            )
-        except TypeError:
-            # Fallback if list_page_meta doesn't support all params yet
-            ms = list_all_meta()
-            # Manual filtering
-            page = [
-                m for m in ms 
-                if (not kb_name or m.get("kb_name") == kb_name) and
-                   (not channel_id or channel_id == "default" or m.get("channel_id") == channel_id)
-            ][offset:offset + page_size]
-        
-        if not page:
-            break
+    try:
+        for batch in scroll_kb_chunks(
+            kb_name=kb_name,
+            channel_id=channel_id,
+            batch_size=1000,
+            max_chunks=max_chunks,
+        ):
+            for chunk in batch:
+                content = str(chunk.get("content") or "").strip()
+                if content:
+                    all_chunks.append(content)
             
-        for m in page:
-            content = str(m.get("content") or "").strip()
-            if content:
-                all_chunks.append(content)
-        
-        offset += page_size
-        
-        # Safety check
-        if len(page) < page_size:
-            break
+            # Safety check
+            if len(all_chunks) >= max_chunks:
+                break
+                
+    except Exception as e:
+        # Log error but continue with what we have
+        import logging
+        logging.getLogger(__name__).warning(f"Error collecting texts: {e}")
     
     state["chunks"] = all_chunks
     return state

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/finalizer.py
+# hypothesis_version: 6.148.7
+
+['archive_temp_dir', 'chunks', 'completed', 'error_count', 'error_log', 'finalizer', 'indexed_keyword', 'indexed_vector', 'local_temp_path', 'original_count', 'processing_stage', 'progress', 'quality_filtered', 'quality_metrics', 'quality_original', 'removed_count', 'status', 'success', 'total_chunks', 'with_errors']

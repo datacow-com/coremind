@@ -3,3 +3,4 @@ ruff==0.6.2
 mypy==1.11.2
 bandit==1.7.9
 types-redis==4.6.0.20241004
+hypothesis>=6.0.0

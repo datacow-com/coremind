@@ -6,8 +6,10 @@ Features:
 - Configurable threshold filtering
 - Fallback chain support
 - Instance caching (P1 Fix #10)
+- Async-wrapped sync calls (P1 Fix)
 """
 
+import asyncio
 import time
 from typing import Any
 
@@ -42,8 +44,11 @@ class CrossEncoderReranker:
         # P1 Fix #10: Use cached reranker with TTL
         reranker = await self._get_cached_reranker(cfg)
 
-        # Reranker scoring
-        scores = reranker.score(query, texts)
+        # P1 Fix: Wrap sync reranker.score() in thread to avoid blocking event loop
+        if asyncio.iscoroutinefunction(reranker.score):
+            scores = await reranker.score(query, texts)
+        else:
+            scores = await asyncio.to_thread(reranker.score, query, texts)
 
         # Update scores and sort
         reranked = []

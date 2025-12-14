@@ -120,6 +120,51 @@ def _has_complex_layout(content: bytes) -> bool:
         return False
 
 
+def _sample_pdf_from_file(file_path: str, max_bytes: int = 5 * 1024 * 1024) -> bytes | None:
+    """
+    P1 Fix: Sample first pages from a PDF file for scan detection.
+    
+    For lazy_load files, we need to read from disk to detect if scanned.
+    Only reads first few MB to avoid memory issues.
+    
+    Args:
+        file_path: Path to PDF file
+        max_bytes: Maximum bytes to read (default 5MB)
+        
+    Returns:
+        Bytes content of first pages, or None if failed
+    """
+    try:
+        import fitz
+        import io
+        
+        # Open the file and extract first 3 pages
+        doc = fitz.open(file_path)
+        if len(doc) == 0:
+            doc.close()
+            return None
+        
+        # Create a new PDF with just first 3 pages
+        pages_to_sample = min(3, len(doc))
+        new_doc = fitz.open()
+        
+        for i in range(pages_to_sample):
+            new_doc.insert_pdf(doc, from_page=i, to_page=i)
+        
+        # Write to bytes
+        output = io.BytesIO()
+        new_doc.save(output)
+        content = output.getvalue()
+        
+        new_doc.close()
+        doc.close()
+        
+        return content if len(content) <= max_bytes else content[:max_bytes]
+        
+    except Exception:
+        return None
+
+
 def route_file(state: IngestState) -> str:
     """
     Intelligent document routing based on file type and content analysis.
@@ -150,6 +195,16 @@ def route_file(state: IngestState) -> str:
             # Check for complex layout (optional enhanced routing)
             if cfg.get('detect_complex_layout', False) and _has_complex_layout(raw_content):
                 return "gpu_parser"
+        
+        # P1 Fix: Handle lazy_load files - sample from disk for scan detection
+        elif state.get('lazy_load') and state.get('local_temp_path'):
+            temp_path = state['local_temp_path']
+            sample_content = _sample_pdf_from_file(temp_path)
+            if sample_content:
+                if _is_scanned_pdf(sample_content):
+                    return "gpu_parser"
+                if cfg.get('detect_complex_layout', False) and _has_complex_layout(sample_content):
+                    return "gpu_parser"
         
         # Default to CPU for native text PDFs
         return "cpu_parser"

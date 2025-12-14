@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/storage/blob_store.py
+# hypothesis_version: 6.148.7
+
+[1024, 'BLOB_STORE_TYPE', 'MINIO_BUCKET', 'MINIO_ENDPOINT', 'MINIO_ROOT_PASSWORD', 'MINIO_ROOT_USER', 'MINIO_SECURE', 'OSS_ACCESS_KEY_ID', 'OSS_BUCKET', 'OSS_ENDPOINT', 'blob_type', 'false', 'local', 'localhost:9000', 'minio', 'minioadmin', 'omnirag', 'oss', 'rb', 'true', 'wb']

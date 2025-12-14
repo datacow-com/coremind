@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/algorithms/graphrag_deep.py
+# hypothesis_version: 6.148.7
+
+[200, 1000, '1', '1.0', '50000', '8', 'GRAPHRAG_MAX_CHUNKS', 'LOUVAIN_RESOLUTION', 'channel_id', 'chunks', 'collect_texts', 'communities', 'communities_path', 'community_count', 'content', 'dashscope', 'default', 'desc', 'description', 'detect_communities', 'edge_count', 'edges', 'entities', 'entity_name', 'entity_type', 'extract_graph', 'graph', 'graph_path_deep', 'id', 'internal_edges', 'kb_name', 'keywords', 'knowledge_graphs', 'level', 'members', 'meta', 'name', 'node_count', 'nodes', 'relations', 'size', 'src', 'src_id', 'store_graph', 'summary', 'tgt', 'tgt_id', 'top_entities', 'true', 'type', 'utf-8', 'w', 'weight']

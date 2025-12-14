@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/embedding/provider_embedder.py
+# hypothesis_version: 6.148.7
+
+[0.0, 200, 256, '1000', '900', 'Authorization', 'BAAI/bge-m3', 'Content-Type', 'EMBED_CACHE_MAXSIZE', 'EMBED_CACHE_TTL', 'Embedding cache hits', 'Embedding errors', 'Embedding latency', 'application/json', 'auto', 'dashscope', 'data', 'embedding', 'embeddings', 'input', 'model', 'openai', 'output', 'provider', 'text', 'utf-8']

@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/retrieval/multimodal/retriever.py
+# hypothesis_version: 6.148.7
+
+[0.8, 1.1, 'bbox', 'block_type', 'channel_id', 'chunk_index', 'content', 'cross_modal_weight', 'description', 'doc_id', 'embedder_config', 'enable_image_search', 'enable_table_search', 'error', 'error_log', 'fused_results', 'id', 'image', 'input_query', 'kb_names', 'metadata', 'modality', 'modality_filter', 'multimodal_results', 'multimodal_retriever', 'multimodal_search', 'page', 'page_num', 'query_image', 'rerank_score', 'score', 'source_doc', 'stage', 'table', 'table_content', 'text', 'top_k', '对比', '数据', '统计', '表格']

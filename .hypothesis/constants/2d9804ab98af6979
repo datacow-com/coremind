@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/nodes/router.py
+# hypothesis_version: 6.148.7
+
+[1024, 50000, '/DCTDecode', '/F', '/FlateDecode', '/Image', '/XObject', 'BT', 'ET', 'TJ', 'Tj', 'bbox', 'blocks', 'bmp', 'cpu_parser', 'dict', 'doc', 'docx', 'file_type', 'force_ocr', 'gif', 'gpu_parser', 'ignore', 'jpeg', 'jpg', 'latin-1', 'lazy_load', 'local_temp_path', 'pdf', 'png', 'ppt', 'pptx', 'raw_content', 'strategy_config', 'tiff', 'type', 'webp', 'xls', 'xlsx']

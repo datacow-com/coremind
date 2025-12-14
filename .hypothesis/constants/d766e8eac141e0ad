@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/ingestion/processors/comic_processor.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.02, 0.3, 0.5, 0.7, 0.8, 0.95, 150, 240, 255, 500, 1000, '!*#@', '.gif', '.jpeg', '.jpg', '.png', '.webp', '__MACOSX', 'auto', 'bbox', 'block_type', 'bubble_count', 'bubble_ocr', 'bubble_type', 'bubbles', 'cbr', 'cbz', 'ch+en', 'comic_panel', 'comic_processor', 'confidence', 'content', 'data', 'error', 'error_log', 'extracted_text', 'file_path', 'file_type', 'filename', 'has_description', 'images', 'later', 'ltr', 'meanwhile', 'metadata', 'narration', 'normal', 'order', 'page', 'panel_detection', 'panel_order', 'panel_type', 'parsed_blocks', 'raw_content', 'reading_order', 'rtl', 'scene_description', 'sfx', 'source', 'speaker', 'speech', 'splash', 'stage', 'strategy_config', 'text', 'thought', 'type', 'vlm_provider', '其后', '在', '时间', '💥', '💬', '💭', '📖']

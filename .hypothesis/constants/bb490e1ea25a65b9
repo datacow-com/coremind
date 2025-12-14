@@ -1,0 +1,4 @@
+# file: /Users/zhangqinghua/workspace/OmniRAG/core/storage/vector_store.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.99, 100, 200, 500, 1000, 1024, 2000, 5000, 20000, '10', 'QDRANT_API_KEY', 'QDRANT_TIMEOUT', 'QDRANT_URL', 'T', 'chunk_id', 'chunk_index', 'collection', 'content', 'doc_id', 'document_id', 'ensure_collection', 'filter', 'id', 'key', 'legacy_search', 'match', 'metadata', 'must', 'name', 'omnirag_chunks', 'op', 'page_num', 'page_number', 'points_count', 'qdrant_host', 'qdrant_op_errors', 'qdrant_port', 'qdrant_url', 'score', 'search', 'upsert', 'value', 'vector_api_key', 'vector_timeout', 'vector_url', 'vectors_count']

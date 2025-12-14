@@ -32,6 +32,7 @@ class GraphLightState(TypedDict):
     """State for GraphRAG Light processing - uses same structure as Deep."""
 
     kb_name: str
+    channel_id: str  # P0 Fix: Required for multi-tenant isolation
     language: str | None
     entity_types: list[str] | None
     chunks: list[str]
@@ -48,7 +49,15 @@ def _apply_light_defaults(state: GraphLightState) -> GraphLightState:
 
 
 async def light_collect(state: GraphLightState) -> GraphLightState:
-    """Collect texts with light preprocessing."""
+    """Collect texts with light preprocessing.
+    
+    P0 Fix: Ensures channel_id is present for multi-tenant isolation
+    before calling the deep collect_texts implementation.
+    """
+    # P0 Fix: Validate channel_id before processing
+    if not state.get("channel_id"):
+        raise ValueError("channel_id is required for GraphRAG Light processing to ensure tenant isolation")
+    
     state = _apply_light_defaults(state)
     return await collect_texts(state)  # Reuse deep implementation
 
