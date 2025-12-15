@@ -1,0 +1,131 @@
+# Metaphysics Domain Ontology - 命理领域本体定义
+# Phase 2: 垂直领域增强
+
+domain_id: metaphysics
+version: "1.0"
+
+entity_types:
+  bazi:
+    description: "八字命盘 - 由年月日时四柱组成"
+    fields:
+      year_pillar:
+        type: string
+        pattern: "^[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]$"
+        description: "年柱，天干地支组合"
+      month_pillar:
+        type: string
+        pattern: "^[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]$"
+        description: "月柱，天干地支组合"
+      day_pillar:
+        type: string
+        pattern: "^[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]$"
+        description: "日柱，天干地支组合"
+      hour_pillar:
+        type: string
+        pattern: "^[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]$"
+        description: "时柱，天干地支组合（可选）"
+    required:
+      - year_pillar
+      - month_pillar
+      - day_pillar
+
+  wuxing:
+    description: "五行分析 - 金木水火土的分布"
+    fields:
+      metal:
+        type: integer
+        minimum: 0
+        maximum: 8
+        description: "金的数量"
+      wood:
+        type: integer
+        minimum: 0
+        maximum: 8
+        description: "木的数量"
+      water:
+        type: integer
+        minimum: 0
+        maximum: 8
+        description: "水的数量"
+      fire:
+        type: integer
+        minimum: 0
+        maximum: 8
+        description: "火的数量"
+      earth:
+        type: integer
+        minimum: 0
+        maximum: 8
+        description: "土的数量"
+      dominant:
+        type: string
+        description: "最旺的五行"
+      weak:
+        type: string
+        description: "最弱的五行"
+    required:
+      - metal
+      - wood
+      - water
+      - fire
+      - earth
+
+  shen_sha:
+    description: "神煞 - 命理中的特殊标记"
+    fields:
+      name:
+        type: string
+        enum:
+          - 天乙贵人
+          - 文昌
+          - 驿马
+          - 桃花
+          - 华盖
+          - 将星
+          - 羊刃
+          - 禄神
+          - 天德
+          - 月德
+          - 天医
+          - 红鸾
+          - 天喜
+          - 孤辰
+          - 寡宿
+          - 劫煞
+          - 亡神
+          - 灾煞
+        description: "神煞名称"
+      position:
+        type: string
+        enum:
+          - 年柱
+          - 月柱
+          - 日柱
+          - 时柱
+        description: "神煞所在位置"
+      nature:
+        type: string
+        enum:
+          - 吉
+          - 凶
+          - 中性
+        description: "神煞性质"
+    required:
+      - name
+
+relationships:
+  - name: has_wuxing
+    source_type: bazi
+    target_type: wuxing
+    cardinality: one
+    description: "八字对应的五行分布"
+
+  - name: has_shen_sha
+    source_type: bazi
+    target_type: shen_sha
+    cardinality: many
+    description: "八字中的神煞"
+
+validation_rules:
+  - rule: "sum(wuxing.metal, wuxing.wood, wuxing.water, wuxing.fire, wuxing.earth) == 8"
+    message: "五行总数必须为8（四柱八字）"

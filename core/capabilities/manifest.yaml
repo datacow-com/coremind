@@ -27,7 +27,7 @@ categories:
     name_en: "Basic"
     description: "文档处理基础能力，默认启用"
     icon: "cube"
-    color: "#10B981"  # green
+    color: "#10B981" # green
     order: 1
 
   enhanced:
@@ -35,7 +35,7 @@ categories:
     name_en: "Enhanced"
     description: "提升处理质量的增强能力"
     icon: "sparkles"
-    color: "#3B82F6"  # blue
+    color: "#3B82F6" # blue
     order: 2
 
   pro:
@@ -43,7 +43,7 @@ categories:
     name_en: "Professional"
     description: "特定场景的专业处理能力"
     icon: "beaker"
-    color: "#8B5CF6"  # purple
+    color: "#8B5CF6" # purple
     order: 3
 
   advanced:
@@ -51,9 +51,8 @@ categories:
     name_en: "Advanced"
     description: "知识增强与深度分析能力"
     icon: "academic-cap"
-    color: "#F59E0B"  # amber
+    color: "#F59E0B" # amber
     order: 4
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -61,7 +60,6 @@ categories:
 # └───────────────────────────────────────────────────────────────────────────┘
 # ═══════════════════════════════════════════════════════════════════════════════
 capabilities:
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 文本提取
   # ─────────────────────────────────────────────────────────────────────────────
@@ -78,7 +76,7 @@ capabilities:
 
     # 状态控制
     default_enabled: true
-    user_configurable: false  # 基础能力不可禁用
+    user_configurable: false # 基础能力不可禁用
     always_on: true
 
     # 适用范围
@@ -100,7 +98,6 @@ capabilities:
 
     # 无需配置
     config_schema: null
-
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 文档分块
@@ -158,7 +155,6 @@ capabilities:
           ui_component: "slider"
           ui_step: 10
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 向量嵌入
   # ─────────────────────────────────────────────────────────────────────────────
@@ -187,7 +183,8 @@ capabilities:
           type: string
           title: "嵌入模型"
           description: "选择向量嵌入模型"
-          enum: ["BAAI/bge-m3", "text-embedding-3-small", "text-embedding-3-large"]
+          enum:
+            ["BAAI/bge-m3", "text-embedding-3-small", "text-embedding-3-large"]
           enum_labels:
             "BAAI/bge-m3": "BGE-M3 (推荐中文)"
             "text-embedding-3-small": "OpenAI Small"
@@ -195,12 +192,11 @@ capabilities:
           default: "BAAI/bge-m3"
           ui_component: "select"
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# ┌───────────────────────────────────────────────────────────────────────────┐
-# │ 增强能力 (Enhanced) - 可选启用，提升处理质量                                │
-# └───────────────────────────────────────────────────────────────────────────┘
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # ┌───────────────────────────────────────────────────────────────────────────┐
+  # │ 增强能力 (Enhanced) - 可选启用，提升处理质量                                │
+  # └───────────────────────────────────────────────────────────────────────────┘
+  # ═══════════════════════════════════════════════════════════════════════════════
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 表格识别
@@ -269,7 +265,6 @@ capabilities:
           description: "识别并处理合并单元格"
           default: true
           ui_component: "switch"
-
 
   # ─────────────────────────────────────────────────────────────────────────────
   # OCR 文字识别
@@ -348,7 +343,6 @@ capabilities:
           default: false
           ui_component: "switch"
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 图像理解
   # ─────────────────────────────────────────────────────────────────────────────
@@ -372,7 +366,7 @@ capabilities:
 
     # 依赖其他能力
     requires:
-      - vlm_provider  # 需要配置 VLM 提供商
+      - vlm_provider # 需要配置 VLM 提供商
 
     implementation:
       module: "core.ingestion.nodes.image_captioner"
@@ -412,7 +406,6 @@ capabilities:
           default: false
           ui_component: "switch"
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 语义分块
   # ─────────────────────────────────────────────────────────────────────────────
@@ -432,7 +425,7 @@ capabilities:
     user_configurable: true
 
     requires:
-      - embedding  # 依赖嵌入能力
+      - embedding # 依赖嵌入能力
 
     implementation:
       module: "core.ingestion.nodes.chunker"
@@ -459,7 +452,6 @@ capabilities:
           maximum: 512
           default: 128
           ui_component: "slider"
-
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 重排序
@@ -515,12 +507,11 @@ capabilities:
           ui_component: "slider"
           ui_step: 0.05
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# ┌───────────────────────────────────────────────────────────────────────────┐
-# │ 专业能力 (Pro) - 特定场景，专业处理                                         │
-# └───────────────────────────────────────────────────────────────────────────┘
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # ┌───────────────────────────────────────────────────────────────────────────┐
+  # │ 专业能力 (Pro) - 特定场景，专业处理                                         │
+  # └───────────────────────────────────────────────────────────────────────────┘
+  # ═══════════════════════════════════════════════════════════════════════════════
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 视频理解
@@ -602,7 +593,6 @@ capabilities:
           default: false
           ui_component: "switch"
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # Excel 智能分析
   # ─────────────────────────────────────────────────────────────────────────────
@@ -675,7 +665,6 @@ capabilities:
           default: 10000
           ui_component: "number"
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 漫画识别
   # ─────────────────────────────────────────────────────────────────────────────
@@ -744,7 +733,6 @@ capabilities:
           default: "ltr"
           ui_component: "select"
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 版面分析
   # ─────────────────────────────────────────────────────────────────────────────
@@ -793,12 +781,242 @@ capabilities:
           default: true
           ui_component: "switch"
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 垂直领域解读 (Phase 2)
+  # ─────────────────────────────────────────────────────────────────────────────
+  vertical_domain:
+    id: "pro.vertical_domain"
+    category: "pro"
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# ┌───────────────────────────────────────────────────────────────────────────┐
-# │ 高级能力 (Advanced) - 知识增强，深度分析                                    │
-# └───────────────────────────────────────────────────────────────────────────┘
-# ═══════════════════════════════════════════════════════════════════════════════
+    name: "垂直领域解读"
+    name_en: "Vertical Domain Interpretation"
+    description: "垂直场景的深度解读和叙事能力"
+    description_en: "Deep interpretation and narrative capabilities for vertical domains"
+    icon: "academic-cap"
+
+    use_case: "适用于需要专业领域知识解读的文档"
+
+    default_enabled: false
+    user_configurable: true
+
+    requires_gpu: true
+    gpu_memory_mb: 4096
+
+    requires:
+      - vlm_provider
+      - llm_provider
+
+    implementation:
+      module: "core.ingestion.nodes.domain_router"
+      class: "DomainRouterNode"
+
+    config_schema:
+      type: object
+      properties:
+        enable_domain_interpretation:
+          type: boolean
+          title: "启用领域解读"
+          description: "在文档处理时启用领域解读"
+          default: true
+          ui_component: "switch"
+
+        auto_detect_domain:
+          type: boolean
+          title: "自动检测领域"
+          description: "自动检测文档所属领域"
+          default: true
+          ui_component: "switch"
+
+        fallback_on_error:
+          type: boolean
+          title: "错误时回退"
+          description: "领域解读失败时回退到标准处理"
+          default: true
+          ui_component: "switch"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 命理解读 (Phase 2)
+  # ─────────────────────────────────────────────────────────────────────────────
+  metaphysics_interpretation:
+    id: "pro.metaphysics_interpretation"
+    category: "pro"
+
+    name: "命理解读"
+    name_en: "Metaphysics Interpretation"
+    description: "八字、五行、神煞等命理元素的专业解读"
+    description_en: "Professional interpretation of BaZi, WuXing, ShenSha and other metaphysics elements"
+    icon: "moon"
+
+    use_case: "适用于命理分析、八字排盘、五行分析等文档"
+
+    default_enabled: false
+    user_configurable: true
+
+    requires_gpu: true
+    gpu_memory_mb: 4096
+
+    supported_formats:
+      - pdf
+      - jpg
+      - jpeg
+      - png
+      - txt
+
+    requires:
+      - vlm_provider
+      - llm_provider
+      - vertical_domain
+
+    implementation:
+      module: "core.domains.metaphysics.interpreter"
+      class: "MetaphysicsInterpreter"
+
+    config_schema:
+      type: object
+      properties:
+        extract_bazi:
+          type: boolean
+          title: "提取八字"
+          description: "从文档中提取八字信息"
+          default: true
+          ui_component: "switch"
+
+        extract_wuxing:
+          type: boolean
+          title: "提取五行"
+          description: "分析五行分布"
+          default: true
+          ui_component: "switch"
+
+        extract_shensha:
+          type: boolean
+          title: "提取神煞"
+          description: "识别神煞信息"
+          default: true
+          ui_component: "switch"
+
+        generate_narrative:
+          type: boolean
+          title: "生成叙事"
+          description: "生成命理解读叙事文本"
+          default: true
+          ui_component: "switch"
+
+        detail_level:
+          type: string
+          title: "详细程度"
+          description: "叙事文本的详细程度"
+          enum: ["brief", "detailed", "comprehensive"]
+          enum_labels:
+            brief: "简洁"
+            detailed: "详细"
+            comprehensive: "全面"
+          default: "detailed"
+          ui_component: "select"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 漫画解读 (Phase 2)
+  # ─────────────────────────────────────────────────────────────────────────────
+  comic_interpretation:
+    id: "pro.comic_interpretation"
+    category: "pro"
+
+    name: "漫画解读"
+    name_en: "Comic Interpretation"
+    description: "漫画分格检测、对话提取、场景描述、故事叙事"
+    description_en: "Panel detection, dialogue extraction, scene description, story narrative"
+    icon: "chat-bubble-bottom-center-text"
+
+    use_case: "适用于四格漫画、连环画、图形小说的深度解读"
+
+    default_enabled: false
+    user_configurable: true
+
+    requires_gpu: true
+    gpu_memory_mb: 8192
+
+    supported_formats:
+      - jpg
+      - jpeg
+      - png
+      - pdf
+      - cbz
+      - cbr
+
+    requires:
+      - vlm_provider
+      - vertical_domain
+
+    implementation:
+      module: "core.domains.comic.interpreter"
+      class: "ComicInterpreter"
+
+    config_schema:
+      type: object
+      properties:
+        panel_detection:
+          type: boolean
+          title: "分格检测"
+          description: "检测漫画分格边界"
+          default: true
+          ui_component: "switch"
+
+        dialogue_extraction:
+          type: boolean
+          title: "对话提取"
+          description: "使用 OCR 提取对话气泡中的文字"
+          default: true
+          ui_component: "switch"
+
+        scene_description:
+          type: boolean
+          title: "场景描述"
+          description: "使用 VLM 描述每格场景内容"
+          default: true
+          ui_component: "switch"
+
+        art_style_analysis:
+          type: boolean
+          title: "艺术风格分析"
+          description: "分析漫画的艺术风格特征"
+          default: false
+          ui_component: "switch"
+
+        reading_order:
+          type: string
+          title: "阅读顺序"
+          description: "分格的阅读顺序"
+          enum: ["rtl", "ltr"]
+          enum_labels:
+            rtl: "从右到左 (日漫)"
+            ltr: "从左到右 (西方)"
+          default: "ltr"
+          ui_component: "select"
+
+        generate_narrative:
+          type: boolean
+          title: "生成叙事"
+          description: "生成连贯的故事叙事"
+          default: true
+          ui_component: "switch"
+
+        detail_level:
+          type: string
+          title: "详细程度"
+          description: "叙事文本的详细程度"
+          enum: ["brief", "detailed", "comprehensive"]
+          enum_labels:
+            brief: "简洁"
+            detailed: "详细"
+            comprehensive: "全面"
+          default: "detailed"
+          ui_component: "select"
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # ┌───────────────────────────────────────────────────────────────────────────┐
+  # │ 高级能力 (Advanced) - 知识增强，深度分析                                    │
+  # └───────────────────────────────────────────────────────────────────────────┘
+  # ═══════════════════════════════════════════════════════════════════════════════
 
   # ─────────────────────────────────────────────────────────────────────────────
   # RAPTOR 层级摘要
@@ -866,7 +1084,6 @@ capabilities:
           maximum: 512
           default: 256
           ui_component: "slider"
-
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 知识图谱 GraphRAG
@@ -938,7 +1155,6 @@ capabilities:
           default: 8
           ui_component: "slider"
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 多模态融合检索
   # ─────────────────────────────────────────────────────────────────────────────
@@ -998,7 +1214,6 @@ capabilities:
           ui_component: "slider"
           ui_step: 0.1
 
-
   # ─────────────────────────────────────────────────────────────────────────────
   # 幻觉检测
   # ─────────────────────────────────────────────────────────────────────────────
@@ -1043,7 +1258,6 @@ capabilities:
           description: "检测到幻觉时在回答中添加警告"
           default: true
           ui_component: "switch"
-
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 网络搜索增强
@@ -1098,7 +1312,6 @@ capabilities:
           description: "根据查询意图自动触发网络搜索"
           default: false
           ui_component: "switch"
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 能力依赖说明

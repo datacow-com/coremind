@@ -1,8 +1,136 @@
 # OmniRAG 垂直领域解读能力增强方案
 
-> **版本**: v2.0 | **日期**: 2025-12-14
+> **版本**: v2.1 | **日期**: 2025-12-14
 > **目标**: 为 core 接入 100TB+ 数据的垂直化深度解读与叙事能力
-> **设计原则**: 最大性价比 · 多云弹性 · 灵活配置 · 随时扩展
+> **设计原则**: 最大性价比 · 多云弹性 · 灵活配置 · 随时扩展 · **以 core 为基盘**
+
+---
+
+## 🚨 架构集成原则 (必读)
+
+### 核心原则：以 core 为基盘，避免双重实现
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     ARCHITECTURE INTEGRATION PRINCIPLE                       │
+│                        "共同能力在 core，差分能力在领域"                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ❌ 错误做法                           ✅ 正确做法                           │
+│   ┌─────────────────────┐              ┌─────────────────────┐              │
+│   │ core/               │              │ core/               │              │
+│   │ ├── llm/gateway.py  │              │ ├── llm/gateway.py  │ ← 增强,不新建 │
+│   │ └── ...             │              │ ├── compute/        │ ← 扩展现有    │
+│   │                     │              │ │   └── providers/  │              │
+│   │ prompt 方案独立实现:  │              │ ├── domains/        │ ← 领域差分    │
+│   │ ├── new_gateway.py  │ ✗ 重复      │ │   ├── base.py     │ ← 共同接口    │
+│   │ ├── new_provider.py │ ✗ 重复      │ │   ├── metaphysics/│ ← 差分实现    │
+│   │ └── ...             │              │ │   └── comic/      │ ← 差分实现    │
+│   └─────────────────────┘              │ └── ...             │              │
+│                                        └─────────────────────┘              │
+│                                                                              │
+│   结果: core 失去基盘价值               结果: core 统一基盘 + 可扩展          │
+│         存在两套独立实现                       为未来垂直场景做好准备          │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 实施准则
+
+| 准则 | 描述 | 动作 |
+|:-----|:-----|:-----|
+| **1. 理解现有实现** | 在设计前，必须理解 core 中已有的实现 | 先读代码，再设计 |
+| **2. 优先本方案** | 如果本方案与 core 现有实现矛盾 | 修改 core，而非新建 |
+| **3. 共同 → 差分** | 先实现共同能力，再实现领域差分 | 基类在 core，子类在领域 |
+| **4. 基盘价值** | core 必须保持作为基盘的价值 | 不能让 core 变成孤岛 |
+| **5. 未来扩展** | 为其他垂直场景接入做好准备 | 抽象接口，不硬编码 |
+
+### Core 现有能力与本方案的映射关系
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    CORE 现有实现 vs 本方案增强                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   CORE 现有模块                本方案动作                  结果              │
+│   ────────────────────────────────────────────────────────────────────────  │
+│                                                                              │
+│   core/llm/                                                                  │
+│   ├── gateway.py          →   增强: 集成多云 Provider     → 统一网关         │
+│   ├── provider_config.py  →   扩展: 添加 Volcengine/Azure → 更多 Provider   │
+│   └── registry.py         →   保留: 复用现有注册机制      → 无改动           │
+│                                                                              │
+│   core/embedding/                                                            │
+│   ├── provider_embedder.py →  增强: 添加成本路由          → 性价比优化       │
+│   └── registry.py          →  扩展: 支持多 Provider 切换  → 灵活配置         │
+│                                                                              │
+│   core/vision/                                                               │
+│   ├── layout_analyzer.py   →  增强: 添加领域感知分析      → 垂直解读基础     │
+│   └── yolo_detector.py     →  保留: 作为基础检测能力      → 无改动           │
+│                                                                              │
+│   core/capabilities/                                                         │
+│   └── manifest.yaml        →  扩展: 添加垂直领域能力卡片  → UI 可见          │
+│                                                                              │
+│   core/ingestion/                                                            │
+│   └── processors/          →  扩展: 添加领域感知处理器    → 通用处理器       │
+│                                                                              │
+│   core/retrieval/                                                            │
+│   └── multimodal/          →  增强: 添加领域增强检索      → 垂直检索能力     │
+│                                                                              │
+│   【新增模块】                                                                │
+│   core/compute/            →  新建: 多云算力 Provider      → 算力基础设施    │
+│   core/domains/            →  新建: 垂直领域抽象层         → 领域扩展点      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 共同能力 vs 差分能力
+
+```yaml
+# 共同能力 (实现在 core/ 根目录)
+common_capabilities:
+  - name: "多云算力 Provider"
+    location: "core/compute/provider_registry.py"
+    reason: "所有垂直场景都需要算力调度"
+    
+  - name: "成本估算器"
+    location: "core/compute/cost_estimator.py"
+    reason: "所有场景都需要成本控制"
+    
+  - name: "领域解读基类"
+    location: "core/domains/base_interpreter.py"
+    reason: "定义统一接口，所有领域实现此接口"
+    
+  - name: "领域注册器"
+    location: "core/domains/registry.py"
+    reason: "统一管理所有垂直领域"
+    
+  - name: "本体 Schema 定义"
+    location: "core/domains/ontology_schema.py"
+    reason: "所有领域本体遵循统一 Schema"
+    
+  - name: "叙事重构引擎"
+    location: "core/domains/narrative_engine.py"
+    reason: "通用叙事能力，可被各领域复用"
+
+# 差分能力 (实现在 core/domains/{domain}/)
+domain_specific:
+  - domain: "metaphysics_chinese"
+    location: "core/domains/metaphysics/"
+    specific_capabilities:
+      - "命理术语知识库"
+      - "天干地支识别器"
+      - "五行关系推理"
+      - "命理解读规则"
+      
+  - domain: "comic_four_panel"
+    location: "core/domains/comic/"
+    specific_capabilities:
+      - "漫画分格检测"
+      - "对话气泡识别"
+      - "起承转合分析"
+      - "画风分类器"
+```
 
 ---
 
@@ -372,36 +500,283 @@ RAG 系统的核心价值不在于"通用问答"，而在于**垂直领域的深
 
 ## 🏗️ Core 能力扩展架构
 
-### 新增能力模块
+> ⚠️ **重要提示**: 本节所有模块均在 core/ 目录下实现，遵循"以 core 为基盘"原则。
+> 不允许在 core 外部创建独立的算力/解读实现。
+
+### 与 Core 现有模块的集成关系
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        CORE 模块集成架构图                                   │
+│                     (实线=增强现有, 虚线=新增模块)                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   现有模块 (保留/增强)                    新增模块 (扩展点)                   │
+│   ════════════════════                    ════════════════════               │
+│                                                                              │
+│   core/llm/                               core/compute/     ← 新增           │
+│   ├── gateway.py ─────────────────────┬─→├── __init__.py                    │
+│   │   (增强: 集成 Provider Registry) │  ├── provider_registry.py           │
+│   ├── provider_config.py ─────────────┤  ├── cost_estimator.py              │
+│   │   (扩展: 添加新 Provider 配置)   │  └── providers/                      │
+│   └── registry.py                     │      ├── dashscope.py               │
+│       (保留: 复用注册机制)            │      ├── volcengine.py              │
+│                                       │      └── azure.py                   │
+│   core/embedding/                     │                                      │
+│   ├── provider_embedder.py ───────────┤  core/domains/      ← 新增           │
+│   │   (增强: 成本感知路由)           │  ├── __init__.py                     │
+│   └── registry.py                     │  ├── registry.py    ← 领域注册      │
+│       (扩展: 多 Provider)            │  ├── base_interpreter.py ← 基类     │
+│                                       │  ├── ontology_schema.py             │
+│   core/vision/                        │  ├── narrative_engine.py ← 共同     │
+│   ├── layout_analyzer.py ─────────────┤  │                                   │
+│   │   (增强: 领域感知分析)           │  ├── metaphysics/    ← 差分          │
+│   └── yolo_detector.py                │  │   ├── interpreter.py             │
+│       (保留)                          │  │   ├── ontology.yaml              │
+│                                       │  │   └── knowledge/                 │
+│   core/capabilities/                  │  │                                   │
+│   └── manifest.yaml ──────────────────┤  └── comic/         ← 差分          │
+│       (扩展: 添加垂直领域能力)       │      ├── interpreter.py             │
+│                                       │      ├── ontology.yaml              │
+│   core/ingestion/                     │      └── panel_detector.py          │
+│   └── processors/ ────────────────────┤                                      │
+│       (扩展: domain_aware_processor) │                                      │
+│                                       │                                      │
+│   core/retrieval/                     │                                      │
+│   └── multimodal/ ────────────────────┘                                      │
+│       (增强: 领域增强检索)                                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 集成实施清单
+
+```yaml
+# 集成实施: 明确每个文件的动作类型
+
+integration_actions:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 1. 增强现有模块 (Enhancement)
+  # ═══════════════════════════════════════════════════════════════════════════
+  enhancement:
+    - file: "core/llm/gateway.py"
+      action: "ENHANCE"
+      changes:
+        - "添加 Provider 选择逻辑"
+        - "集成成本估算"
+        - "添加故障转移"
+      注意: "不新建 gateway，在现有基础上增强"
+      
+    - file: "core/llm/provider_config.py"
+      action: "ENHANCE"
+      changes:
+        - "添加 volcengine 配置"
+        - "添加 azure 配置"
+        - "添加成本信息字段"
+      注意: "扩展 DEFAULT_CONFIG 和 REQUIRED_ENV"
+      
+    - file: "core/embedding/provider_embedder.py"
+      action: "ENHANCE"
+      changes:
+        - "添加 Provider 路由"
+        - "添加缓存层"
+      注意: "复用现有 EmbedderRegistry"
+      
+    - file: "core/vision/layout_analyzer.py"
+      action: "ENHANCE"
+      changes:
+        - "添加 domain_context 参数"
+        - "支持领域感知的区域分类"
+      注意: "保持向后兼容"
+      
+    - file: "core/capabilities/manifest.yaml"
+      action: "ENHANCE"
+      changes:
+        - "添加 vertical_domain 能力定义"
+        - "添加 compute_provider 能力定义"
+      注意: "遵循现有 manifest schema"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 2. 新增共同模块 (New Common)
+  # ═══════════════════════════════════════════════════════════════════════════
+  new_common:
+    - file: "core/compute/__init__.py"
+      action: "CREATE"
+      purpose: "算力模块入口"
+      
+    - file: "core/compute/provider_registry.py"
+      action: "CREATE"
+      purpose: "多云 Provider 注册器 (所有场景共用)"
+      exports: ["ComputeProviderRegistry", "get_compute_registry"]
+      
+    - file: "core/compute/cost_estimator.py"
+      action: "CREATE"
+      purpose: "成本估算器 (所有场景共用)"
+      exports: ["CostEstimator", "estimate_cost"]
+      
+    - file: "core/compute/providers/dashscope.py"
+      action: "CREATE"
+      purpose: "阿里云百炼 Provider"
+      
+    - file: "core/compute/providers/volcengine.py"
+      action: "CREATE"
+      purpose: "火山方舟 Provider"
+      
+    - file: "core/compute/providers/azure.py"
+      action: "CREATE"
+      purpose: "Azure OpenAI Provider"
+      
+    - file: "core/domains/__init__.py"
+      action: "CREATE"
+      purpose: "领域模块入口"
+      
+    - file: "core/domains/registry.py"
+      action: "CREATE"
+      purpose: "领域注册器 (所有领域共用)"
+      exports: ["DomainRegistry", "get_domain_registry"]
+      
+    - file: "core/domains/base_interpreter.py"
+      action: "CREATE"
+      purpose: "领域解读基类 (所有领域必须继承)"
+      exports: ["BaseDomainInterpreter"]
+      
+    - file: "core/domains/ontology_schema.py"
+      action: "CREATE"
+      purpose: "本体 Schema 定义 (所有领域遵循)"
+      exports: ["OntologySchema", "validate_ontology"]
+      
+    - file: "core/domains/narrative_engine.py"
+      action: "CREATE"
+      purpose: "叙事重构引擎 (所有领域可复用)"
+      exports: ["NarrativeEngine"]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 3. 新增差分模块 (New Domain-Specific)
+  # ═══════════════════════════════════════════════════════════════════════════
+  new_domain_specific:
+    - domain: "metaphysics"
+      files:
+        - "core/domains/metaphysics/__init__.py"
+        - "core/domains/metaphysics/interpreter.py"  # 继承 BaseDomainInterpreter
+        - "core/domains/metaphysics/ontology.yaml"
+        - "core/domains/metaphysics/knowledge/"      # 领域知识库
+      注意: "必须继承 BaseDomainInterpreter"
+      
+    - domain: "comic"
+      files:
+        - "core/domains/comic/__init__.py"
+        - "core/domains/comic/interpreter.py"        # 继承 BaseDomainInterpreter
+        - "core/domains/comic/ontology.yaml"
+        - "core/domains/comic/panel_detector.py"     # 领域特有能力
+      注意: "必须继承 BaseDomainInterpreter"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 4. 禁止的动作 (Forbidden)
+  # ═══════════════════════════════════════════════════════════════════════════
+  forbidden:
+    - action: "在 core 外创建算力相关代码"
+      reason: "违反基盘原则"
+      
+    - action: "新建独立的 LLM Gateway"
+      reason: "应增强现有 core/llm/gateway.py"
+      
+    - action: "新建独立的 Embedding 服务"
+      reason: "应增强现有 core/embedding/"
+      
+    - action: "领域解读不继承 BaseDomainInterpreter"
+      reason: "违反共同接口原则"
+      
+    - action: "硬编码领域特有逻辑到共同模块"
+      reason: "应放在领域差分模块中"
+```
+
+### 目录结构 (完整视图)
 
 ```
 core/
-├── domains/                          # 新增: 垂直领域模块
-│   ├── __init__.py
-│   ├── registry.py                   # 领域注册器
-│   ├── base_interpreter.py           # 基础解读器接口
-│   ├── metaphysics/                  # 命理玄学领域
-│   │   ├── __init__.py
-│   │   ├── ontology.yaml             # 领域本体定义
-│   │   ├── interpreter.py            # 领域解读器
-│   │   └── knowledge_base/           # 领域知识库
-│   ├── comic/                        # 漫画领域
-│   │   ├── __init__.py
-│   │   ├── ontology.yaml
-│   │   ├── interpreter.py
-│   │   └── panel_detector.py         # 分格检测
-│   └── custom/                       # 自定义领域模板
-│       └── template.yaml
+│
+├── 【现有模块 - 增强】
+├── llm/
+│   ├── gateway.py              # 增强: 集成 Provider Registry
+│   ├── provider_config.py      # 增强: 添加新 Provider 配置
+│   └── registry.py             # 保留
+│
+├── embedding/
+│   ├── provider_embedder.py    # 增强: 成本感知路由
+│   ├── registry.py             # 扩展
+│   └── simple_embedder.py      # 保留
+│
+├── vision/
+│   ├── layout_analyzer.py      # 增强: 领域感知分析
+│   ├── layoutlm_parser.py      # 保留
+│   ├── table.py                # 保留
+│   └── yolo_detector.py        # 保留
 │
 ├── capabilities/
-│   └── manifest.yaml                 # 扩展: 添加垂直领域能力
+│   ├── manifest.yaml           # 扩展: 添加垂直领域能力
+│   ├── registry.py             # 保留
+│   └── loader.py               # 保留
 │
 ├── ingestion/
 │   └── processors/
-│       └── domain_aware_processor.py # 新增: 领域感知处理器
+│       └── domain_aware_processor.py  # 新增: 领域感知处理器
 │
-└── retrieval/
-    └── domain_enhanced_retriever.py  # 新增: 领域增强检索器
+├── retrieval/
+│   ├── multimodal/
+│   │   ├── embedder.py         # 增强: 领域感知
+│   │   └── retriever.py        # 增强
+│   └── domain_enhanced_retriever.py   # 新增: 领域增强检索
+│
+│
+├── 【新增模块 - 共同能力】
+├── compute/                    # 新增: 算力基础设施
+│   ├── __init__.py
+│   ├── provider_registry.py    # 多云 Provider 注册器
+│   ├── cost_estimator.py       # 成本估算器
+│   ├── cost_optimizer.yaml     # 成本优化策略配置
+│   ├── providers.yaml          # Provider 配置
+│   └── providers/
+│       ├── __init__.py
+│       ├── base.py             # Provider 基类
+│       ├── dashscope.py        # 阿里云百炼
+│       ├── volcengine.py       # 火山方舟
+│       ├── azure.py            # Azure OpenAI
+│       └── deepseek.py         # DeepSeek
+│
+│
+├── 【新增模块 - 领域抽象层】
+├── domains/                    # 新增: 垂直领域模块
+│   ├── __init__.py
+│   ├── registry.py             # 领域注册器 (共同)
+│   ├── base_interpreter.py     # 基础解读器接口 (共同)
+│   ├── ontology_schema.py      # 本体 Schema 定义 (共同)
+│   ├── narrative_engine.py     # 叙事重构引擎 (共同)
+│   │
+│   ├── 【差分实现 - 命理领域】
+│   ├── metaphysics/
+│   │   ├── __init__.py
+│   │   ├── interpreter.py      # 继承 BaseDomainInterpreter
+│   │   ├── ontology.yaml       # 命理本体定义
+│   │   └── knowledge/          # 命理知识库
+│   │       ├── tiangan.yaml    # 天干
+│   │       ├── dizhi.yaml      # 地支
+│   │       └── wuxing.yaml     # 五行
+│   │
+│   ├── 【差分实现 - 漫画领域】
+│   ├── comic/
+│   │   ├── __init__.py
+│   │   ├── interpreter.py      # 继承 BaseDomainInterpreter
+│   │   ├── ontology.yaml       # 漫画本体定义
+│   │   └── panel_detector.py   # 分格检测 (领域特有)
+│   │
+│   └── 【模板 - 新领域接入】
+│   └── _template/
+│       ├── __init__.py.template
+│       ├── interpreter.py.template
+│       └── ontology.yaml.template
+│
+└── ...
 ```
 
 ### Manifest 扩展: 垂直领域能力卡片
@@ -2425,86 +2800,262 @@ def estimate_cost(
 
 ## 🔧 实施检查清单
 
-### Phase 0: 算力基础设施 (1 周)
-- [ ] 创建 `core/compute/` 模块目录
-- [ ] 实现 `providers.yaml` 配置文件
-- [ ] 实现 `ComputeProviderRegistry` 核心类
-- [ ] 实现四个 Provider: DashScope, Volcengine, Azure, DeepSeek
-- [ ] 实现 `CostEstimator` 成本估算器
-- [ ] 集成到现有 `LLMGateway`
-- [ ] 添加 Prometheus 监控指标
+> ⚠️ **实施顺序原则**: 先共同能力，再差分能力；先增强现有，再新建模块。
 
-### Phase 1: 基础设施 (2 周)
-- [ ] 扩展 `core/domains/` 模块目录结构
-- [ ] 实现 `DomainInterpreterRegistry` 基类
-- [ ] 定义领域本体 YAML Schema
-- [ ] 集成 GPU 策略配置
+### Phase 0: 理解现有实现 (第 1 天) ⭐ 必须首先完成
 
-### Phase 2: 核心能力 (4 周)
-- [ ] 实现多模态垂直解读器
-- [ ] 命理领域示例完整实现
-- [ ] 四联漫画领域示例完整实现
-- [ ] 领域感知的 Chunk 策略
+```yaml
+# 在写任何代码之前，必须完成以下理解工作
+understand_existing:
+  - file: "core/llm/gateway.py"
+    理解点:
+      - "现有 Provider 加载机制"
+      - "熔断/降级逻辑"
+      - "用量记录方式"
+    
+  - file: "core/llm/provider_config.py"
+    理解点:
+      - "DEFAULT_CONFIG 结构"
+      - "REQUIRED_ENV 映射"
+      - "provider_category 分类逻辑"
+    
+  - file: "core/embedding/provider_embedder.py"
+    理解点:
+      - "现有 embedding 调用链路"
+      - "缓存机制 (如有)"
+    
+  - file: "core/vision/layout_analyzer.py"
+    理解点:
+      - "LayoutElement 数据结构"
+      - "现有区域检测逻辑"
+    
+  - file: "core/capabilities/manifest.yaml"
+    理解点:
+      - "能力定义 Schema"
+      - "config_schema 格式"
+      - "implementation 映射方式"
+```
 
-### Phase 3: 规模化 (4 周)
+### Phase 1: 增强现有模块 (1 周)
+
+```yaml
+# 先增强现有模块，不新建
+enhance_existing:
+  - task: "增强 core/llm/provider_config.py"
+    checklist:
+      - [ ] 添加 volcengine Provider 配置
+      - [ ] 添加 azure Provider 配置
+      - [ ] 添加 deepseek Provider 配置 (如未有)
+      - [ ] 添加成本字段 (cost_per_1k_tokens)
+    
+  - task: "增强 core/llm/gateway.py"
+    checklist:
+      - [ ] 添加 Provider 选择逻辑
+      - [ ] 添加成本感知路由
+      - [ ] 增强故障转移链
+    注意: "不新建 gateway，在现有基础上增强"
+    
+  - task: "扩展 core/capabilities/manifest.yaml"
+    checklist:
+      - [ ] 添加 compute_provider 能力定义
+      - [ ] 添加 vertical_domain 能力定义
+```
+
+### Phase 2: 新建共同模块 (1 周)
+
+```yaml
+# 在现有模块增强完成后，新建共同模块
+new_common_modules:
+  - task: "创建 core/compute/ 模块"
+    checklist:
+      - [ ] 创建 __init__.py
+      - [ ] 创建 provider_registry.py (多云 Provider 注册器)
+      - [ ] 创建 cost_estimator.py (成本估算器)
+      - [ ] 创建 providers.yaml (配置文件)
+      - [ ] 创建 providers/base.py (Provider 基类)
+      - [ ] 创建 providers/dashscope.py
+      - [ ] 创建 providers/volcengine.py
+      - [ ] 创建 providers/azure.py
+    集成点: "在 core/llm/gateway.py 中导入使用"
+    
+  - task: "创建 core/domains/ 共同模块"
+    checklist:
+      - [ ] 创建 __init__.py
+      - [ ] 创建 registry.py (领域注册器)
+      - [ ] 创建 base_interpreter.py (解读器基类)
+      - [ ] 创建 ontology_schema.py (本体 Schema)
+      - [ ] 创建 narrative_engine.py (叙事引擎)
+    注意: "此阶段不实现具体领域"
+```
+
+### Phase 3: 实现差分领域 (2 周)
+
+```yaml
+# 在共同模块完成后，实现差分领域
+domain_specific:
+  - task: "实现命理领域 core/domains/metaphysics/"
+    checklist:
+      - [ ] 创建 interpreter.py (继承 BaseDomainInterpreter)
+      - [ ] 创建 ontology.yaml
+      - [ ] 创建 knowledge/ 目录
+      - [ ] 单元测试
+    验证: "必须通过 BaseDomainInterpreter 接口测试"
+    
+  - task: "实现漫画领域 core/domains/comic/"
+    checklist:
+      - [ ] 创建 interpreter.py (继承 BaseDomainInterpreter)
+      - [ ] 创建 ontology.yaml
+      - [ ] 创建 panel_detector.py
+      - [ ] 单元测试
+    验证: "必须通过 BaseDomainInterpreter 接口测试"
+```
+
+### Phase 4: 集成验证 (1 周)
+
+```yaml
+# 验证整体集成
+integration_verification:
+  - task: "端到端测试"
+    checklist:
+      - [ ] 命理图像解读流程
+      - [ ] 漫画解读流程
+      - [ ] 多云 Provider 切换
+      - [ ] 成本控制生效
+      
+  - task: "回归测试"
+    checklist:
+      - [ ] 现有 RAG 功能不受影响
+      - [ ] 现有 API 向后兼容
+      - [ ] 性能无显著下降
+```
+
+### Phase 5: 规模化与监控 (2 周)
+
 - [ ] 分布式 Embedding 生成
 - [ ] 增量 GraphRAG 更新
 - [ ] 100TB 数据测试验证
 - [ ] GPU 弹性扩展集成
-
-### Phase 4: 优化与监控 (2 周)
-- [ ] 性能基准测试
-- [ ] 成本优化
-- [ ] 监控面板
-- [ ] 文档与培训
+- [ ] Prometheus 监控指标
+- [ ] Grafana Dashboard
 
 ---
 
 ## 📝 使用示例
 
-### 1. 注册新垂直领域
+### 1. 使用增强后的 LLMGateway (共同能力)
 
 ```python
-from core.domains.registry import DomainInterpreterRegistry
+# 使用增强后的现有 Gateway，而非新建
+from core.llm.gateway import LLMGateway
 
-# 注册命理领域
-registry = DomainInterpreterRegistry()
-registry.register_domain(
-    domain_id="metaphysics_chinese",
-    ontology_path="core/domains/metaphysics/ontology.yaml",
-    interpreter_class="MetaphysicsInterpreter"
+# Gateway 现在支持 Provider 选择和成本感知
+gateway = LLMGateway(
+    provider="dashscope",  # 或 "volcengine", "azure"
+    model="qwen-vl-max"
+)
+
+# 内部自动进行成本评估和 Provider 路由
+result = await gateway.chat(
+    prompt="描述这张图片",
+    context=image_description
 )
 ```
 
-### 2. 执行垂直解读
+### 2. 使用算力 Provider Registry (共同能力)
 
 ```python
+# 算力 Provider 通过 core/compute/ 统一管理
+from core.compute import get_compute_registry, ComputeRequest, TaskType
+
+registry = get_compute_registry()
+
+# 所有场景共用的算力调度
+response = await registry.execute(ComputeRequest(
+    task_type=TaskType.VISION,
+    content={"images": [image_bytes], "prompt": "描述图像"},
+    max_cost=0.05  # 成本控制
+))
+```
+
+### 3. 注册新垂直领域 (差分能力)
+
+```python
+# 领域注册使用 core/domains/ 统一入口
+from core.domains.registry import DomainRegistry
+from core.domains.metaphysics import MetaphysicsInterpreter
+
+# 注册领域 (必须继承 BaseDomainInterpreter)
+registry = DomainRegistry()
+registry.register(
+    domain_id="metaphysics_chinese",
+    interpreter_class=MetaphysicsInterpreter,
+    ontology_path="core/domains/metaphysics/ontology.yaml"
+)
+```
+
+### 4. 执行垂直解读 (差分能力调用共同接口)
+
+```python
+# 通过统一接口调用，内部路由到具体领域
 from core.domains import interpret_document
 
 result = await interpret_document(
     content=image_bytes,
     content_type="image",
-    domain_id="metaphysics_chinese",
+    domain_id="metaphysics_chinese",  # 路由到命理解读器
     interpretation_depth="deep",
-    enable_narrative=True,
-    enable_knowledge_linking=True
+    enable_narrative=True
 )
 
+# 所有领域返回统一格式 (由 BaseDomainInterpreter 定义)
 print(result.narrative.detailed_interpretation)
-# Output: 
-# "本图展示了中国传统命理学中关于'天运周期'的核心概念。
-#  图中道士形象代表古代术数传承者，其双手合十的姿态暗示
-#  对天机的敬畏。文字叙述揭示了三个关键知识点：
-#  1. 天运循环的漫长性与复杂性
-#  2. 古代天才发现规律的罕见性  
-#  3. 秘而不宣的传承传统
-#  对话气泡中的'窥天机'与'遭天谴'体现了传统文化中
-#  对宇宙规律的神秘主义态度..."
+```
+
+### 5. 新增领域的标准流程
+
+```python
+# 新领域必须遵循的实现模式
+from core.domains.base_interpreter import BaseDomainInterpreter
+from core.domains.ontology_schema import OntologySchema
+
+class NewDomainInterpreter(BaseDomainInterpreter):
+    """
+    新领域解读器
+    必须继承 BaseDomainInterpreter，实现所有抽象方法
+    """
+    
+    # 1. 定义领域 ID
+    domain_id = "new_domain"
+    
+    # 2. 加载领域本体
+    def load_ontology(self) -> OntologySchema:
+        return OntologySchema.from_yaml("core/domains/new_domain/ontology.yaml")
+    
+    # 3. 实现抽象方法 (共同接口)
+    async def decompose(self, content: Any) -> dict:
+        """视觉/文本分解 - 领域特有实现"""
+        pass
+    
+    async def understand(self, decomposed: dict) -> dict:
+        """语义理解 - 领域特有实现"""
+        pass
+    
+    async def reconstruct_narrative(self, understood: dict) -> dict:
+        """叙事重构 - 可复用 NarrativeEngine"""
+        from core.domains.narrative_engine import NarrativeEngine
+        return await NarrativeEngine().reconstruct(understood, self.ontology)
 ```
 
 ---
 
 ## 🔐 注意事项
+
+### 架构集成相关 (最重要)
+1. **以 core 为基盘**: 所有实现必须在 core/ 目录下
+2. **禁止双重实现**: 不允许在 core 外创建独立的算力/解读服务
+3. **先增强后新建**: 优先增强现有模块，而非新建
+4. **共同 → 差分**: 先实现共同能力，再实现领域差分
+5. **统一接口**: 所有领域必须继承 BaseDomainInterpreter
 
 ### 算力 Provider 相关
 1. **API Key 安全**: 所有 API Key 必须通过环境变量配置，禁止硬编码

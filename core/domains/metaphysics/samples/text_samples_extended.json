@@ -1,0 +1,108 @@
+{
+	"samples": [
+		{
+			"id": 6,
+			"description": "混合格式",
+			"content": "甲寅乙卯丙辰丁巳四柱，木旺火相。金0木4水0火2土2。羊刃在日支。",
+			"expected": {
+				"bazi": {
+					"year_pillar": "甲寅",
+					"month_pillar": "乙卯",
+					"day_pillar": "丙辰",
+					"hour_pillar": "丁巳"
+				},
+				"wuxing": { "metal": 0, "wood": 4, "water": 0, "fire": 2, "earth": 2 },
+				"shen_sha": ["羊刃"]
+			}
+		},
+		{
+			"id": 7,
+			"description": "带神煞详解",
+			"content": "壬申癸酉甲戌乙亥，金2木2水3火0土1。天医主医药，红鸾主婚姻。",
+			"expected": {
+				"bazi": {
+					"year_pillar": "壬申",
+					"month_pillar": "癸酉",
+					"day_pillar": "甲戌",
+					"hour_pillar": "乙亥"
+				},
+				"wuxing": { "metal": 2, "wood": 2, "water": 3, "fire": 0, "earth": 1 },
+				"shen_sha": ["天医", "红鸾"]
+			}
+		},
+		{
+			"id": 8,
+			"description": "五行缺失",
+			"content": "丙子丁丑戊寅己卯，金0木2水1火2土3，缺金。天喜临命。",
+			"expected": {
+				"bazi": {
+					"year_pillar": "丙子",
+					"month_pillar": "丁丑",
+					"day_pillar": "戊寅",
+					"hour_pillar": "己卯"
+				},
+				"wuxing": { "metal": 0, "wood": 2, "water": 1, "fire": 2, "earth": 3 },
+				"shen_sha": ["天喜"]
+			}
+		},
+		{
+			"id": 9,
+			"description": "多神煞",
+			"content": "庚辰辛巳壬午癸未，金2木0水2火1土3。孤辰寡宿劫煞并见。",
+			"expected": {
+				"bazi": {
+					"year_pillar": "庚辰",
+					"month_pillar": "辛巳",
+					"day_pillar": "壬午",
+					"hour_pillar": "癸未"
+				},
+				"wuxing": { "metal": 2, "wood": 0, "water": 2, "fire": 1, "earth": 3 },
+				"shen_sha": ["孤辰", "寡宿", "劫煞"]
+			}
+		},
+		{
+			"id": 10,
+			"description": "标准命盘格式",
+			"content": "甲午乙未丙申丁酉，金2木2水0火3土1。亡神灾煞需注意。",
+			"expected": {
+				"bazi": {
+					"year_pillar": "甲午",
+					"month_pillar": "乙未",
+					"day_pillar": "丙申",
+					"hour_pillar": "丁酉"
+				},
+				"wuxing": { "metal": 2, "wood": 2, "water": 0, "fire": 3, "earth": 1 },
+				"shen_sha": ["亡神", "灾煞"]
+			}
+		},
+		{
+			"id": 11,
+			"description": "纯文本描述",
+			"content": "此人生于甲子年乙丑月丙寅日丁卯时，八字木火通明，文昌星照命。",
+			"expected": {
+				"bazi": {
+					"year_pillar": "甲子",
+					"month_pillar": "乙丑",
+					"day_pillar": "丙寅",
+					"hour_pillar": "丁卯"
+				},
+				"shen_sha": ["文昌"]
+			}
+		},
+		{
+			"id": 12,
+			"description": "带分析结论",
+			"content": "年柱：戊辰\n月柱：己巳\n日柱：庚午\n时柱：辛未\n五行土金旺，金2木0水0火1土5。禄神临身。",
+			"expected": {
+				"bazi": {
+					"year_pillar": "戊辰",
+					"month_pillar": "己巳",
+					"day_pillar": "庚午",
+					"hour_pillar": "辛未"
+				},
+				"wuxing": { "metal": 2, "wood": 0, "water": 0, "fire": 1, "earth": 5 },
+				"shen_sha": ["禄神"]
+			}
+		}
+	]
+}

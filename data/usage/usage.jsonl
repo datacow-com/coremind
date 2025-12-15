@@ -1,2 +1,10 @@
 {"ts": 1764764733, "kind": "chat_stream", "provider": "dashscope", "model": "qwen-plus", "tokens_in": 1, "tokens_out": 0, "duration_ms": 11}
 {"ts": 1764767103, "kind": "chat_stream", "provider": "dashscope", "model": "qwen-plus", "tokens_in": 1, "tokens_out": 0, "duration_ms": 11}
+{"ts": 1765763835, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 44, "duration_ms": 3175}
+{"ts": 1765763841, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 45, "duration_ms": 2500}
+{"ts": 1765763848, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 59, "duration_ms": 2681}
+{"ts": 1765763854, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 45, "duration_ms": 2630}
+{"ts": 1765801765, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 60, "duration_ms": 2749}
+{"ts": 1765801781, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 59, "duration_ms": 7547}
+{"ts": 1765801787, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 44, "duration_ms": 2249}
+{"ts": 1765801802, "kind": "chat", "provider": "dashscope", "model": "qwen-turbo", "tokens_in": 22, "tokens_out": 70, "duration_ms": 7563}

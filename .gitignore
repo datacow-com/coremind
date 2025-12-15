@@ -82,3 +82,4 @@ models/
 # Environment variables
 .env
 tests/core/docs
+.hypothesis

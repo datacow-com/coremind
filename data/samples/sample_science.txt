@@ -1,0 +1,14 @@
+The Theory of Relativity
+
+Albert Einstein's theory of relativity is one of the most important scientific discoveries of the 20th century. It consists of two interrelated theories: special relativity and general relativity.
+
+Special relativity, published in 1905, deals with objects moving at constant speeds, particularly those approaching the speed of light. It introduced the famous equation E=mc², which shows that mass and energy are equivalent.
+
+General relativity, published in 1915, extends special relativity to include gravity. It describes gravity not as a force, but as a curvature of spacetime caused by mass and energy. This theory has been confirmed by numerous experiments, including the detection of gravitational waves in 2015.
+
+Key predictions of relativity include:
+- Time dilation: Time passes slower for objects moving at high speeds
+- Length contraction: Objects appear shorter in the direction of motion
+- Mass-energy equivalence: E=mc²
+- Gravitational time dilation: Time passes slower in stronger gravitational fields
+- Black holes: Regions where gravity is so strong that nothing can escape

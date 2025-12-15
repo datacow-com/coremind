@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql import func
 
@@ -20,6 +20,15 @@ class Provider(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Phase 1 扩展字段
+    priority = Column(Integer, default=10)  # 路由优先级，数字越小优先级越高
+    endpoints = Column(JSON, default={})  # {"chat": "...", "embedding": "...", "vision": "..."}
+    rate_limits = Column(JSON, default={})  # {"rpm": 1000, "tpm": 1000000}
+    is_healthy = Column(Boolean, default=True)
+    last_health_check = Column(DateTime(timezone=True))
+    circuit_breaker_failures = Column(Integer, default=0)
+    circuit_breaker_open_until = Column(DateTime(timezone=True))
 
 
 class ModelConfig(Base):
@@ -100,5 +109,69 @@ class KBDocument(Base):
     path = Column(String(1000), nullable=False)
     uploaded_at = Column(Integer, default=0)
     doc_metadata = Column(JSON, default={})
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# ============================================================================
+# Phase 1: 多云算力基础设施模型
+# ============================================================================
+
+
+class ComputeCostRecord(Base):
+    """API 调用成本记录"""
+    __tablename__ = "compute_cost_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(String(100), nullable=False)
+    channel_id = Column(String(100))
+    user_id = Column(String(100))
+    provider_id = Column(String(100), nullable=False)
+    model_id = Column(String(100), nullable=False)
+    task_type = Column(String(50), nullable=False)  # chat, embedding, vision
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    image_count = Column(Integer, default=0)
+    cost_usd = Column(Numeric(10, 6), nullable=False)
+    latency_ms = Column(Integer)
+    cached = Column(Boolean, default=False)
+    success = Column(Boolean, nullable=False)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BudgetConfig(Base):
+    """预算配置"""
+    __tablename__ = "budget_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope = Column(String(50), nullable=False)  # global, channel, user
+    scope_id = Column(String(100))  # channel_id 或 user_id，global 时为 NULL
+    daily_limit = Column(Numeric(10, 2))
+    monthly_limit = Column(Numeric(10, 2))
+    alert_threshold = Column(Numeric(3, 2), default=0.80)  # 80% 时告警
+    hard_stop_threshold = Column(Numeric(3, 2), default=0.95)  # 95% 时停止
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('scope', 'scope_id', name='uq_budget_scope'),
+    )
+
+
+class DomainConfig(Base):
+    """领域配置（Phase 2+ 预留）"""
+    __tablename__ = "domain_configs"
+
+    id = Column(String(100), primary_key=True)  # metaphysics_chinese, comic_four_panel
+    name = Column(String(200), nullable=False)
+    name_en = Column(String(200))
+    ontology = Column(JSON, nullable=False)  # 领域本体定义
+    visual_schema = Column(JSON)  # 视觉模式定义
+    narrative_schema = Column(JSON)  # 叙事模式定义
+    interpretation_rules = Column(JSON)  # 解读规则
+    gpu_requirements = Column(JSON)  # {"min_vram_gb": 8, "recommended_vram_gb": 24}
+    enabled = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

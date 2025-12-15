@@ -29,6 +29,7 @@ def _lazy_import_nodes():
     from core.ingestion.nodes.loader import LoaderNode
     from core.ingestion.nodes.router import RouterNode, route_file
     from core.ingestion.nodes.parser import CpuTextParser, GpuVisionParser
+    from core.ingestion.nodes.domain_router import DomainRouterNode
     from core.ingestion.nodes.chunker import SmartChunker
     from core.ingestion.nodes.embedder import BatchEmbedder
     from core.ingestion.nodes.indexer import DualIndexer
@@ -42,6 +43,7 @@ def _lazy_import_nodes():
         'route_file': route_file,
         'CpuTextParser': CpuTextParser,
         'GpuVisionParser': GpuVisionParser,
+        'DomainRouterNode': DomainRouterNode,
         'SmartChunker': SmartChunker,
         'BatchEmbedder': BatchEmbedder,
         'DualIndexer': DualIndexer,
@@ -108,11 +110,12 @@ def create_ingest_graph():
     Create the ingestion graph with full pipeline.
     
     Pipeline: 
-    loader -> router -> cpu_parser/gpu_parser -> chunker -> qc -> embedder -> indexer -> finalizer
-                                                              |
-                                               error_handler <--> (retry or finalizer)
+    loader -> router -> cpu_parser/gpu_parser -> domain_router -> chunker -> qc -> embedder -> indexer -> finalizer
+                                                                                    |
+                                                                     error_handler <--> (retry or finalizer)
     
     P1 Fix: Uses lazy imports to avoid gRPC mutex lock on module import.
+    P2 Fix: Added domain_router node for vertical domain interpretation.
     """
     # Lazy import to avoid gRPC mutex lock
     StateGraph, END = _lazy_import_langgraph()
@@ -126,6 +129,7 @@ def create_ingest_graph():
     workflow.add_node("router", nodes['RouterNode']())
     workflow.add_node("cpu_parser", nodes['CpuTextParser']())
     workflow.add_node("gpu_parser", nodes['GpuVisionParser']())
+    workflow.add_node("domain_router", nodes['DomainRouterNode']())  # P2: Domain interpretation
     workflow.add_node("chunker", nodes['SmartChunker']())
     workflow.add_node("qc", nodes['QualityChecker']())  # P1 Fix: Quality checker
     workflow.add_node("embedder", nodes['BatchEmbedder']())
@@ -147,9 +151,12 @@ def create_ingest_graph():
         }
     )
     
-    # Parser to chunker
-    workflow.add_edge("cpu_parser", "chunker")
-    workflow.add_edge("gpu_parser", "chunker")
+    # Parser to domain_router (P2: Domain interpretation after parsing)
+    workflow.add_edge("cpu_parser", "domain_router")
+    workflow.add_edge("gpu_parser", "domain_router")
+    
+    # Domain router to chunker
+    workflow.add_edge("domain_router", "chunker")
     
     # Chunker to quality checker
     workflow.add_edge("chunker", "qc")
@@ -204,9 +211,11 @@ def create_ingest_graph_no_checkpoint():
     Useful for testing where checkpointing is not needed.
     
     Pipeline: 
-    loader -> router -> cpu_parser/gpu_parser -> chunker -> qc -> embedder -> indexer -> finalizer
-                                                              |
-                                               error_handler <--> (retry or finalizer)
+    loader -> router -> cpu_parser/gpu_parser -> domain_router -> chunker -> qc -> embedder -> indexer -> finalizer
+                                                                                    |
+                                                                     error_handler <--> (retry or finalizer)
+    
+    P2 Fix: Added domain_router node for vertical domain interpretation.
     """
     # Lazy import to avoid gRPC mutex lock
     StateGraph, END = _lazy_import_langgraph()
@@ -220,6 +229,7 @@ def create_ingest_graph_no_checkpoint():
     workflow.add_node("router", nodes['RouterNode']())
     workflow.add_node("cpu_parser", nodes['CpuTextParser']())
     workflow.add_node("gpu_parser", nodes['GpuVisionParser']())
+    workflow.add_node("domain_router", nodes['DomainRouterNode']())  # P2: Domain interpretation
     workflow.add_node("chunker", nodes['SmartChunker']())
     workflow.add_node("qc", nodes['QualityChecker']())
     workflow.add_node("embedder", nodes['BatchEmbedder']())
@@ -241,9 +251,12 @@ def create_ingest_graph_no_checkpoint():
         }
     )
     
-    # Parser to chunker
-    workflow.add_edge("cpu_parser", "chunker")
-    workflow.add_edge("gpu_parser", "chunker")
+    # Parser to domain_router (P2: Domain interpretation after parsing)
+    workflow.add_edge("cpu_parser", "domain_router")
+    workflow.add_edge("gpu_parser", "domain_router")
+    
+    # Domain router to chunker
+    workflow.add_edge("domain_router", "chunker")
     
     # Chunker to quality checker
     workflow.add_edge("chunker", "qc")

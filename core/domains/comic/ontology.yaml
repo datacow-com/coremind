@@ -1,0 +1,190 @@
+# Comic Domain Ontology - 漫画领域本体定义
+# Phase 2: 垂直领域增强
+
+domain_id: comic
+version: "1.0"
+
+entity_types:
+  panel:
+    description: "漫画分格 - 漫画的基本叙事单元"
+    fields:
+      index:
+        type: integer
+        minimum: 0
+        description: "分格在阅读顺序中的索引"
+      scene_description:
+        type: string
+        description: "场景描述"
+      characters:
+        type: array
+        items_type: string
+        description: "出现的角色列表"
+      dialogue:
+        type: array
+        items_type: string
+        description: "对话内容列表"
+      action:
+        type: string
+        description: "动作描述"
+      mood:
+        type: string
+        description: "情绪氛围"
+      bbox:
+        type: object
+        description: "边界框坐标"
+      confidence:
+        type: float
+        minimum: 0
+        maximum: 1
+        description: "检测置信度"
+    required:
+      - index
+
+  character:
+    description: "角色 - 漫画中出现的人物或生物"
+    fields:
+      name:
+        type: string
+        description: "角色名称或标识"
+      description:
+        type: string
+        description: "角色外观描述"
+      appearances:
+        type: array
+        items_type: integer
+        description: "出现的分格索引列表"
+      role:
+        type: string
+        enum:
+          - protagonist
+          - antagonist
+          - supporting
+          - background
+        description: "角色类型"
+    required:
+      - name
+
+  dialogue:
+    description: "对话 - 漫画中的文字内容"
+    fields:
+      text:
+        type: string
+        description: "对话文本内容"
+      speaker:
+        type: string
+        description: "说话者"
+      panel_index:
+        type: integer
+        minimum: 0
+        description: "所属分格索引"
+      bubble_type:
+        type: string
+        enum:
+          - speech
+          - thought
+          - narration
+          - sfx
+        description: "气泡类型：对话/心理/旁白/音效"
+      bbox:
+        type: object
+        description: "气泡边界框"
+    required:
+      - text
+      - panel_index
+
+  scene:
+    description: "场景 - 漫画中的背景环境"
+    fields:
+      location:
+        type: string
+        description: "场景位置"
+      time_of_day:
+        type: string
+        enum:
+          - morning
+          - afternoon
+          - evening
+          - night
+          - unknown
+        description: "时间段"
+      weather:
+        type: string
+        description: "天气状况"
+      atmosphere:
+        type: string
+        description: "氛围描述"
+    required: []
+
+  art_style:
+    description: "艺术风格 - 漫画的视觉风格特征"
+    fields:
+      style:
+        type: string
+        enum:
+          - manga
+          - western_comic
+          - european_comic
+          - webcomic
+          - cartoon
+          - realistic
+          - chibi
+          - other
+        description: "整体风格类型"
+      color_scheme:
+        type: string
+        enum:
+          - black_and_white
+          - grayscale
+          - full_color
+          - limited_palette
+          - monochrome
+        description: "配色方案"
+      line_work:
+        type: string
+        enum:
+          - bold
+          - fine
+          - sketchy
+          - clean
+          - mixed
+        description: "线条风格"
+      characteristics:
+        type: array
+        items_type: string
+        description: "其他风格特点"
+    required: []
+
+relationships:
+  - name: contains_dialogue
+    source_type: panel
+    target_type: dialogue
+    cardinality: many
+    description: "分格包含的对话"
+
+  - name: features_character
+    source_type: panel
+    target_type: character
+    cardinality: many
+    description: "分格中出现的角色"
+
+  - name: has_scene
+    source_type: panel
+    target_type: scene
+    cardinality: one
+    description: "分格的场景背景"
+
+  - name: speaks
+    source_type: character
+    target_type: dialogue
+    cardinality: many
+    description: "角色说的对话"
+
+validation_rules:
+  - rule: "panel.index >= 0"
+    message: "分格索引必须为非负整数"
+
+  - rule: "dialogue.panel_index in panels.indices"
+    message: "对话必须属于有效的分格"
+
+  - rule: "character.appearances subset of panels.indices"
+    message: "角色出现的分格必须存在"
