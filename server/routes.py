@@ -1508,3 +1508,32 @@ async def kb_documents(name: str):
     except Exception:
         pass
     return {"documents": items}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Include KB Config API Router
+# ═══════════════════════════════════════════════════════════════════════════════
+from server.api.kb_config import router as kb_config_router
+
+router.include_router(kb_config_router)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Include Algorithms API Router
+# ═══════════════════════════════════════════════════════════════════════════════
+from server.api.algorithms import router as algorithms_router
+
+router.include_router(algorithms_router)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Include Domains API Router
+# ═══════════════════════════════════════════════════════════════════════════════
+from server.api.domains import router as domains_router
+
+router.include_router(domains_router)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Include LLM Gateway API Router
+# ═══════════════════════════════════════════════════════════════════════════════
+from server.api.llm_gateway import router as llm_gateway_router
+
+router.include_router(llm_gateway_router)
